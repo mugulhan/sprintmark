@@ -133,8 +133,34 @@
       <div class="detail-grid">
         <aside class="actions">
           <button id="copyLink">Kalıcı bağlantıyı kopyala</button>
+          <button id="toggleDone" type="button" class="completion-action">
+            Tamamlandı olarak işaretle
+          </button>
+          <button id="editWorkItem">İçeriği düzenle</button>
+          <dl id="facts"></dl>
+          <section id="attachmentForm" aria-labelledby="evidenceTitle">
+            <h3 id="evidenceTitle">Kanıt görselleri</h3>
+            <input
+              id="attachment"
+              class="visually-hidden"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+            />
+            <button
+              class="evidence-dropzone"
+              id="evidencePasteZone"
+              type="button"
+            >
+              <strong>Görsel ekle</strong>
+              <span>Tıklayın, sürükleyin veya Ctrl+V ile yapıştırın</span>
+              <small>PNG, JPEG, WebP veya GIF · en fazla 8 MB</small>
+            </button>
+          </section>
+          <div id="attachments"></div>
+        </aside>
+        <div class="content-panel">
           <form id="editMetadata" class="edit-metadata">
-            <h3>İş bilgileri</h3>
             <label>Durum<select id="editStatus"></select></label>
             <label
               >Ekip<select id="editTeam">
@@ -151,33 +177,18 @@
                 <option value="low">Düşük</option>
               </select></label
             >
-            <label>Tarih<input id="editDate" type="date" /></label>
-            <label>Saat<input id="editTime" type="time" /></label>
+            <label class="planned-at"
+              >Planlanan zaman
+              <span class="schedule-control">
+                <input id="editDate" type="date" aria-label="Planlanan tarih" />
+                <span aria-hidden="true">·</span>
+                <input id="editTime" type="time" aria-label="Planlanan saat" />
+              </span>
+            </label>
             <button id="saveMetadata" type="submit" class="primary">
-              Bilgileri güncelle
+              Güncelle
             </button>
           </form>
-          <button id="toggleDone" type="button" class="completion-action">
-            Tamamlandı olarak işaretle
-          </button>
-          <button id="editWorkItem">İçeriği düzenle</button>
-          <dl id="facts"></dl>
-          <form id="attachmentForm" tabindex="0">
-            <h3>Kanıt görseli ekle</h3>
-            <input
-              id="attachment"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-            /><button type="submit">Yükle</button>
-            <div class="paste-zone" id="evidencePasteZone" tabindex="0">
-              Dosya seçin, sürükleyin veya panodan Ctrl+V ile yapıştırın.
-            </div>
-            <small>PNG, JPEG, WebP veya GIF; dosya başına en fazla 8 MB.</small>
-          </form>
-          <div id="attachments"></div>
-        </aside>
-        <div class="content-panel">
           <div id="editConflict" class="conflict-banner" hidden>
             <strong>Bu kayıt başka bir işlemde güncellendi.</strong>
             <span>Editördeki taslağınız korunuyor.</span>
@@ -194,6 +205,12 @@
           </div>
         </div>
       </div>
+    </dialog>
+
+    <dialog id="imageLightbox" class="image-lightbox">
+      <button type="button" class="lightbox-close" aria-label="Kapat">×</button>
+      <img id="lightboxImage" alt="" />
+      <p id="lightboxCaption"></p>
     </dialog>
 
     <dialog id="projectEditDialog" class="create-dialog">
@@ -308,12 +325,22 @@
             <option value="low">Düşük</option>
           </select></label
         >
-        <div class="date-fields">
-          <label>Takvim tarihi<input name="scheduled_for" type="date" /></label
-          ><label
-            >Planlanan saat<input name="scheduled_time" type="time"
-          /></label>
-        </div>
+        <label class="planned-at"
+          >Planlanan zaman
+          <span class="schedule-control">
+            <input
+              name="scheduled_for"
+              type="date"
+              aria-label="Planlanan tarih"
+            />
+            <span aria-hidden="true">·</span>
+            <input
+              name="scheduled_time"
+              type="time"
+              aria-label="Planlanan saat"
+            />
+          </span>
+        </label>
         <label
           >Detay
           <div id="createEditor" class="rich-editor"></div

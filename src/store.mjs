@@ -209,6 +209,51 @@ export class WorkItemStore {
     };
   }
 
+  async removeAttachment(uid, name, ifMatch) {
+    const existing = await this.byUid(uid);
+    if (!existing)
+      throw Object.assign(new Error("work item not found"), {
+        statusCode: 404,
+      });
+    if (!ifMatch || ifMatch !== existing._etag)
+      throw Object.assign(new Error("record changed; reload before saving"), {
+        statusCode: 409,
+      });
+    if (basename(name) !== name)
+      throw Object.assign(new Error("unsafe attachment path"), {
+        statusCode: 400,
+      });
+    const attachment = existing.attachments.find(
+      (entry) => typeof entry !== "string" && entry.name === name,
+    );
+    if (!attachment)
+      throw Object.assign(new Error("attachment not found"), {
+        statusCode: 404,
+      });
+    if (attachment.placement === "body")
+      throw Object.assign(
+        new Error("body attachment must be removed in editor"),
+        {
+          statusCode: 409,
+        },
+      );
+    const path = await this.attachmentPath(uid, name);
+    const next = {
+      ...existing,
+      attachments: existing.attachments.filter(
+        (entry) => typeof entry === "string" || entry.name !== name,
+      ),
+      updated_at: new Date().toISOString(),
+    };
+    delete next.body;
+    delete next._path;
+    delete next._etag;
+    const saved = await saveRecord(this.workspace, next, existing.body);
+    await generateSummaries(this.workspace);
+    if (path) await rm(path, { force: true });
+    return { ...next, body: existing.body, _etag: saved.etag };
+  }
+
   async attachmentPath(uid, name) {
     if (!/^[0-9a-f-]{36}$/i.test(uid) || basename(name) !== name) return null;
     const root = resolve(
