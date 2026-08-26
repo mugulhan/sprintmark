@@ -6,9 +6,11 @@ import test from "node:test";
 const publicRoot = resolve(import.meta.dirname, "..", "public");
 
 test("project navigation and Markdown rich editing are wired in the UI", async () => {
-  const [html, app] = await Promise.all([
+  const [html, app, styles, logo] = await Promise.all([
     readFile(resolve(publicRoot, "index.html"), "utf8"),
     readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+    readFile(resolve(publicRoot, "sprintmark-mark.svg"), "utf8"),
   ]);
   assert.match(html, /data-view="projects"/);
   assert.match(html, /class="brand-lockup"/);
@@ -26,12 +28,16 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
   assert.match(html, /class="schedule-control"/);
   assert.match(html, /Planlanan zaman/);
   assert.equal((html.match(/class="schedule-control"/g) || []).length, 2);
+  assert.doesNotMatch(html, /aria-hidden="true">·/);
   assert.doesNotMatch(html, /metadata-heading/);
   assert.match(html, /id="imageLightbox"/);
   assert.match(html, /class="evidence-dropzone"/);
   assert.match(html, /vendor\/toastui-editor\.js/);
   assert.match(app, /window\.toastui\.Editor/);
   assert.match(app, /viewer: true/);
+  assert.match(styles, /\.primary:not\(:disabled\):hover/);
+  assert.match(styles, /grid-template-columns: minmax\(132px, 1fr\) 82px/);
+  assert.match(logo, /Planlamadan tamamlanmaya ilerleyen üç iş kartı/);
   assert.doesNotMatch(app, /Henüz sprint oluşturulmadı/);
 });
 

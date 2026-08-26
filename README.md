@@ -7,7 +7,7 @@
 Sprintmark is a local-first, file-backed project and sprint tracker. It combines a calendar, backlog, project dashboards, drag-and-drop scheduling, Markdown-rich work items, priorities, evidence galleries, and clipboard image uploads without requiring a database or cloud account.
 
 > [!WARNING]
-> Sprintmark 0.6.1 is a single-user application with no authentication. Bind it to `127.0.0.1` or place it behind your own authenticated reverse proxy. Do not expose it directly to the public internet.
+> Sprintmark 0.6.2 is a single-user application with no authentication. Bind it to `127.0.0.1` or place it behind your own authenticated reverse proxy. Do not expose it directly to the public internet.
 
 ## Requirements
 
