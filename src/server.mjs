@@ -22,7 +22,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -412,6 +412,19 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
           },
           { ETag: result.record._etag },
         );
+      }
+      const attachmentDeleteApi = path.match(
+        /^\/api\/v1\/work-items\/([0-9a-f-]{36})\/attachments\/([^/]+)$/i,
+      );
+      if (attachmentDeleteApi && req.method === "DELETE") {
+        if (!writeAllowed(req))
+          return send(res, 403, { error: "origin_not_allowed" });
+        const record = await store.removeAttachment(
+          attachmentDeleteApi[1],
+          decodeURIComponent(attachmentDeleteApi[2]),
+          req.headers["if-match"],
+        );
+        return send(res, 200, publicRecord(record), { ETag: record._etag });
       }
       const attachment = path.match(
         /^\/attachments\/([0-9a-f-]{36})\/([^/]+)$/i,

@@ -291,3 +291,35 @@ test("draft multipart images are promoted into a new work item", async (context)
     200,
   );
 });
+
+test("evidence API uploads and removes gallery images with ETags", async (context) => {
+  const { server, item, base } = await fixture();
+  context.after(() => server.close());
+  const form = new globalThis.FormData();
+  form.append(
+    "file",
+    new globalThis.Blob(
+      [Buffer.from("89504e470d0a1a0a0000000d49484452", "hex")],
+      { type: "image/png" },
+    ),
+    "evidence.png",
+  );
+  form.append("placement", "evidence");
+  const upload = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/attachments`,
+    { method: "POST", body: form },
+  );
+  assert.equal(upload.status, 201);
+  const uploaded = await upload.json();
+  assert.equal(uploaded.record.attachments.length, 1);
+  const remove = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/attachments/${encodeURIComponent(uploaded.attachment.name)}`,
+    {
+      method: "DELETE",
+      headers: { "if-match": upload.headers.get("etag") },
+    },
+  );
+  assert.equal(remove.status, 200);
+  assert.equal((await remove.json()).attachments.length, 0);
+  assert.equal((await fetch(`${base}${uploaded.attachment.url}`)).status, 404);
+});

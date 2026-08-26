@@ -428,16 +428,7 @@ async function openItem(key, push = true) {
   $("editorActions").hidden = true;
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
-  $("attachments").innerHTML = item.attachments
-    .map((attachment) => {
-      if (typeof attachment === "string") {
-        return `<div class="attachment-reference"><strong>Kan&#305;t dosyas&#305;</strong><code>${escapeHtml(attachment)}</code></div>`;
-      }
-      if (!attachment?.url) return "";
-      const url = escapeHtml(attachment.url);
-      return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(attachment.original_name || "Gorev gorseli")}"></a>`;
-    })
-    .join("");
+  renderEvidence(item);
   if (push) {
     state.returnPath = `${location.pathname}${location.search}`;
     history.pushState({ key: item.key }, "", canonical(item));
@@ -487,6 +478,28 @@ async function uploadWorkItemImage(file, placement = "evidence") {
     item.uid === result.record.uid ? result.record : item,
   );
   return result;
+}
+
+function renderEvidence(item) {
+  $("attachments").innerHTML = item.attachments
+    .filter(
+      (attachment) =>
+        typeof attachment === "string" || attachment?.placement !== "body",
+    )
+    .map((attachment) => {
+      if (typeof attachment === "string") {
+        return `<div class="attachment-reference"><strong>Kan&#305;t dosyas&#305;</strong><code>${escapeHtml(attachment)}</code></div>`;
+      }
+      if (!attachment?.url) return "";
+      const url = escapeHtml(attachment.url);
+      const name = escapeHtml(attachment.original_name || "Gorev gorseli");
+      return `<article class="evidence-card"><button class="evidence-preview" type="button" data-lightbox-url="${url}" data-lightbox-alt="${name}" aria-label="${name} görselini büyüt"><img src="${url}" alt="${name}"></button><div><span title="${name}">${name}</span><button class="evidence-remove" type="button" data-attachment-name="${escapeHtml(attachment.name)}" aria-label="${name} görselini kaldır">Kaldır</button></div></article>`;
+    })
+    .join("");
+  $("attachments").classList.toggle(
+    "is-empty",
+    !$("attachments").children.length,
+  );
 }
 async function startWorkItemEdit() {
   if (!state.selected || state.editingWorkItem) return;
@@ -1070,8 +1083,7 @@ $("createForm").onsubmit = async (e) => {
   render();
   openItem(item.key);
 };
-$("attachmentForm").onsubmit = async (e) => {
-  e.preventDefault();
+async function uploadSelectedEvidence() {
   const files = [...$("attachment").files];
   if (!files.length) return;
   try {
@@ -1081,7 +1093,41 @@ $("attachmentForm").onsubmit = async (e) => {
   }
   $("attachment").value = "";
   await openItem(state.selected.key, false);
-};
+}
+$("attachment").addEventListener("change", uploadSelectedEvidence);
+$("evidencePasteZone").addEventListener("click", () => $("attachment").click());
+$("attachments").addEventListener("click", async (event) => {
+  const preview = event.target.closest("[data-lightbox-url]");
+  if (preview) {
+    $("lightboxImage").src = preview.dataset.lightboxUrl;
+    $("lightboxImage").alt = preview.dataset.lightboxAlt;
+    $("lightboxCaption").textContent = preview.dataset.lightboxAlt;
+    $("imageLightbox").showModal();
+    return;
+  }
+  const remove = event.target.closest("[data-attachment-name]");
+  if (!remove || !state.selected) return;
+  if (!globalThis.confirm("Bu kanıt görseli kaldırılsın mı?")) return;
+  remove.disabled = true;
+  const response = await fetch(
+    `/api/v1/work-items/${state.selected.uid}/attachments/${encodeURIComponent(remove.dataset.attachmentName)}`,
+    {
+      method: "DELETE",
+      headers: { "If-Match": state.selected._etag },
+    },
+  );
+  if (!response.ok) {
+    remove.disabled = false;
+    return alert((await response.json()).error || "Görsel kaldırılamadı.");
+  }
+  await openItem(state.selected.key, false);
+});
+$("imageLightbox").addEventListener("click", (event) => {
+  if (event.target === $("imageLightbox")) $("imageLightbox").close();
+});
+$("imageLightbox")
+  .querySelector(".lightbox-close")
+  .addEventListener("click", () => $("imageLightbox").close());
 
 function clipboardImages(event) {
   return [...(event.clipboardData?.items || [])]

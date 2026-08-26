@@ -134,3 +134,33 @@ test("attachment guard rejects unsupported and oversized files", async () => {
   );
   assert.equal(await store.attachmentPath(created.uid, "../outside.png"), null);
 });
+
+test("evidence attachments can be removed with optimistic locking", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-store-"));
+  const store = new WorkItemStore(workspace);
+  const created = await store.create({ title: "Evidence gallery" });
+  const uploaded = await store.addAttachment(created.uid, {
+    name: "proof.png",
+    type: "image/png",
+    data: Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"),
+  });
+  await assert.rejects(
+    () =>
+      store.removeAttachment(
+        created.uid,
+        uploaded.attachment.name,
+        created._etag,
+      ),
+    (error) => error.statusCode === 409,
+  );
+  const removed = await store.removeAttachment(
+    created.uid,
+    uploaded.attachment.name,
+    uploaded.record._etag,
+  );
+  assert.equal(removed.attachments.length, 0);
+  assert.equal(
+    await store.attachmentPath(created.uid, uploaded.attachment.name),
+    null,
+  );
+});

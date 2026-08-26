@@ -350,17 +350,16 @@ main {
 }
 .edit-metadata {
   display: grid;
-  gap: 0.55rem;
-  margin: 0.75rem 0;
+  grid-template-columns:
+    minmax(105px, 0.8fr) minmax(145px, 1fr) minmax(105px, 0.8fr)
+    minmax(245px, 1.25fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+  margin: 14px 18px 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
-}
-.edit-metadata h3 {
-  margin: 0;
-  color: var(--navy);
-  font-size: 13px;
+  background: #f5f9fd;
 }
 .edit-metadata label {
   display: grid;
@@ -373,8 +372,35 @@ main {
   width: 100%;
   min-width: 0;
 }
-.edit-metadata button {
+.planned-at {
+  min-width: 0;
+}
+.schedule-control {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto minmax(88px, 0.65fr);
+  align-items: center;
+  min-height: 37px;
+  overflow: hidden;
+  border: 1px solid #b9c9d8;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+}
+.schedule-control input {
   width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+}
+.schedule-control input:focus {
+  box-shadow: inset 0 0 0 2px #72aee6;
+}
+.edit-metadata button {
+  min-height: 37px;
+  white-space: nowrap;
 }
 .completion-action {
   border-color: #85c8ad;
@@ -571,7 +597,7 @@ dialog::backdrop {
 }
 .detail-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   min-height: 500px;
 }
 .actions {
@@ -612,6 +638,91 @@ dd {
 #attachmentForm small {
   color: var(--muted);
 }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.evidence-dropzone {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 10px;
+  border: 2px dashed #9db7d8;
+  border-radius: 9px;
+  background: #f8fbff;
+  color: #435d7b;
+  text-align: center;
+  cursor: pointer;
+}
+.evidence-dropzone:hover,
+.evidence-dropzone:focus-visible,
+.evidence-dropzone.drop-target {
+  border-color: #0067c5;
+  background: #edf7ff;
+}
+.evidence-dropzone strong {
+  color: var(--navy);
+}
+.evidence-dropzone span,
+.evidence-dropzone small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+#attachments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+#attachments.is-empty {
+  display: none;
+}
+.evidence-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.evidence-preview {
+  display: block;
+  width: 100%;
+  height: 90px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #eef3f8;
+  cursor: zoom-in;
+}
+.evidence-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.evidence-card > div {
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+}
+.evidence-card span {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-remove {
+  padding: 4px 6px;
+  border-color: #e2a9a9;
+  color: #9a2929;
+  font-size: 10px;
+}
 .attachment-reference {
   display: grid;
   gap: 5px;
@@ -624,25 +735,57 @@ dd {
 .attachment-reference code {
   overflow-wrap: anywhere;
 }
-#attachments img {
+.image-lightbox {
+  width: min(94vw, 1400px);
+  max-width: none;
+  height: min(92vh, 1000px);
+  padding: 44px 20px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #0b1726;
+  color: #fff;
+}
+.image-lightbox::backdrop {
+  background: rgb(1 11 24 / 84%);
+}
+.image-lightbox img {
+  display: block;
   width: 100%;
-  max-height: 180px;
+  height: calc(100% - 38px);
   object-fit: contain;
-  margin-top: 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
-  cursor: zoom-in;
+}
+.image-lightbox p {
+  margin: 10px 40px 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-color: #6f8196;
+  color: #fff;
+  font-size: 24px;
 }
 .markdown {
-  padding: 22px 25px;
+  padding: 20px 25px 22px;
   overflow: auto;
-  max-height: calc(88vh - 86px);
+  max-height: calc(88vh - 178px);
 }
 .content-panel {
   min-width: 0;
   overflow: hidden;
   background: #fff;
+}
+@media (max-width: 1150px) {
+  .edit-metadata {
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
+  }
 }
 .rich-editor {
   margin: 18px 20px 0;
@@ -711,12 +854,18 @@ dd {
 }
 .markdown code {
   padding: 2px 5px;
+  border: 1px solid #d5e1eb;
   border-radius: 4px;
-  background: #edf2f6;
+  background: #edf3f8;
+  color: #173e62;
+  font-weight: 600;
 }
 .markdown pre code {
   padding: 0;
+  border: 0;
   background: transparent;
+  color: inherit;
+  font-weight: inherit;
 }
 .markdown img {
   max-width: 100%;
@@ -726,7 +875,47 @@ dd {
   cursor: zoom-in;
 }
 .markdown a {
-  color: #0065bd;
+  color: #0057a8;
+  font-weight: 600;
+  text-decoration-color: #6aa6d9;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.markdown a:hover {
+  color: #003d78;
+  text-decoration-thickness: 2px;
+}
+.markdown a:focus-visible {
+  border-radius: 3px;
+  outline: 3px solid #8bc5f4;
+  outline-offset: 2px;
+}
+.markdown .toastui-editor-contents code {
+  border-color: #d5e1eb;
+  background: #edf3f8;
+  color: #173e62;
+}
+.markdown .toastui-editor-contents pre code {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.markdown .toastui-editor-contents a,
+.markdown .toastui-editor-contents a:visited {
+  color: #0057a8;
+}
+.markdown .toastui-editor-contents a code {
+  border-color: #bdd6ea;
+  background: #e7f2fb;
+  color: #004b91;
+  text-decoration: inherit;
+}
+.markdown .toastui-editor-contents th {
+  background: #0d365b;
+  color: #fff;
+}
+.markdown .toastui-editor-contents td {
+  color: #172b3d;
 }
 .create-dialog {
   width: min(620px, calc(100% - 28px));
@@ -1002,6 +1191,16 @@ body[data-view="projects"] #plannerStatus {
   }
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+  .edit-metadata {
+    grid-template-columns: 1fr;
+    margin: 12px;
+  }
+  .schedule-control {
+    grid-template-columns: minmax(125px, 1fr) auto minmax(95px, 0.75fr);
+  }
+  .markdown {
+    max-height: none;
   }
   .actions {
     border-right: 0;

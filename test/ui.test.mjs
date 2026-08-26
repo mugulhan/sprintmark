@@ -19,6 +19,16 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
   assert.match(html, /id="editStatus"/);
   assert.match(html, /id="editPriority"/);
   assert.match(html, /id="toggleDone"/);
+  assert.match(
+    html,
+    /class="content-panel">\s*<form id="editMetadata" class="edit-metadata">/,
+  );
+  assert.match(html, /class="schedule-control"/);
+  assert.match(html, /Planlanan zaman/);
+  assert.equal((html.match(/class="schedule-control"/g) || []).length, 2);
+  assert.doesNotMatch(html, /metadata-heading/);
+  assert.match(html, /id="imageLightbox"/);
+  assert.match(html, /class="evidence-dropzone"/);
   assert.match(html, /vendor\/toastui-editor\.js/);
   assert.match(app, /window\.toastui\.Editor/);
   assert.match(app, /viewer: true/);
