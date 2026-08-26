@@ -1,9 +1,9 @@
-FROM node:22.20.0-alpine AS dependencies
+FROM node:26.7.0-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:22.20.0-alpine AS vendor
+FROM node:26.7.0-alpine AS vendor
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -11,7 +11,7 @@ COPY src ./src
 COPY scripts ./scripts
 RUN npm run build:vendor
 
-FROM node:22.20.0-alpine
+FROM node:26.7.0-alpine
 WORKDIR /app
 ENV NODE_ENV=production \
     SPRINTMARK_DATA_DIR=/data \
