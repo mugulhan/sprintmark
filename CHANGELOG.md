@@ -4,6 +4,14 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-26
+
+### Changed
+
+- Refined the planned-time control into a tighter single visual field.
+- Added readable hover, focus and busy states to primary actions.
+- Replaced the letter-like app mark with a compact backlog-to-done card motif.
+
 ## [0.6.1] - 2026-08-26
 
 ### Changed
@@ -35,7 +43,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Priority levels, filters, scheduled times, Turkish and English UI modes.
 - Docker and GitHub Container Registry distribution.
 
-[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/mugulhan/sprintmark/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/mugulhan/sprintmark/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mugulhan/sprintmark/releases/tag/v0.5.0

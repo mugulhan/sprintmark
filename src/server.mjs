@@ -22,7 +22,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
