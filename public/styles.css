@@ -40,15 +40,34 @@ header {
 .header-row {
   justify-content: space-between;
 }
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 190px;
+}
+.brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 5px 9px #052f6326);
+}
+.brand-copy {
+  min-width: 0;
+}
 .header-row h1 {
   margin: 0;
   color: var(--navy);
-  font-size: 22px;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
 }
 .build-meta {
   color: var(--muted);
   font-size: 11px;
-  margin-top: 2px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  margin-top: 4px;
 }
 nav {
   display: flex;
@@ -79,6 +98,13 @@ button:hover {
 }
 .filters {
   margin-top: 11px;
+}
+.projects-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 700;
 }
 .project-picker {
   display: flex;
@@ -259,6 +285,13 @@ main {
   font-variant-numeric: tabular-nums;
   color: #475569;
 }
+.card-completed {
+  display: block;
+  margin-top: 4px;
+  color: #107052;
+  font-size: 9px;
+  font-weight: 700;
+}
 .priority {
   border-radius: 999px;
   padding: 0.08rem 0.38rem;
@@ -319,6 +352,15 @@ main {
   display: grid;
   gap: 0.55rem;
   margin: 0.75rem 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.edit-metadata h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 13px;
 }
 .edit-metadata label {
   display: grid;
@@ -330,6 +372,27 @@ main {
 .edit-metadata input {
   width: 100%;
   min-width: 0;
+}
+.edit-metadata button {
+  width: 100%;
+}
+.completion-action {
+  border-color: #85c8ad;
+  background: #effaf5;
+  color: #116b4e !important;
+}
+.completion-action.reopen {
+  border-color: #dfb373;
+  background: #fff7eb;
+  color: #875105 !important;
+}
+.completion-time {
+  display: grid;
+  gap: 2px;
+}
+.completion-time small {
+  color: var(--green);
+  font-weight: 700;
 }
 .markdown table,
 .toastui-editor-contents table {

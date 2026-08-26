@@ -22,7 +22,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -32,6 +32,7 @@ const types = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".gif": "image/gif",
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 function send(res, status, body, headers = {}) {

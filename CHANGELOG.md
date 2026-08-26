@@ -4,6 +4,15 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-26
+
+### Added
+
+- A distinct Sprintmark brand mark and a focused version-only application header.
+- Always-available status and priority controls in the work-item detail panel.
+- Server-owned completion timestamps with exact and relative completion times.
+- A one-click action to complete or reopen work without editing its content.
+
 ## [0.5.0] - 2026-08-26
 
 ### Added
@@ -15,5 +24,6 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Priority levels, filters, scheduled times, Turkish and English UI modes.
 - Docker and GitHub Container Registry distribution.
 
-[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mugulhan/sprintmark/releases/tag/v0.5.0

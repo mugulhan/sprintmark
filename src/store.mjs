@@ -65,6 +65,7 @@ export class WorkItemStore {
       page_url: input.page_url || null,
       created_at: now,
       updated_at: now,
+      completed_at: input.status === "done" ? now : null,
       legacy_ids: [],
       legacy_routes: [],
       attachments,
@@ -121,12 +122,17 @@ export class WorkItemStore {
           statusCode: 400,
         });
     }
+    const now = new Date().toISOString();
     const next = {
       ...existing,
       ...input,
       attachments: [...existing.attachments, ...attachments],
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
+    if (existing.status !== "done" && next.status === "done")
+      next.completed_at = now;
+    if (existing.status === "done" && next.status !== "done")
+      next.completed_at = null;
     next.slug = slugify(next.slug || next.title);
     delete next.body;
     delete next._path;

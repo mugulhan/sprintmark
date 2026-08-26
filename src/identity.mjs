@@ -80,6 +80,16 @@ export function validateRecord(record) {
   }
   if (record.priority && !PRIORITIES.has(record.priority))
     errors.push("priority is invalid");
+  if (
+    record.completed_at !== null &&
+    record.completed_at !== undefined &&
+    (typeof record.completed_at !== "string" ||
+      Number.isNaN(Date.parse(record.completed_at)))
+  ) {
+    errors.push("completed_at must be an ISO timestamp or null");
+  }
+  if (record.status !== "done" && record.completed_at)
+    errors.push("completed_at is only valid for done records");
   if (!Array.isArray(record.legacy_ids))
     errors.push("legacy_ids must be an array");
   if (!Array.isArray(record.legacy_routes))
