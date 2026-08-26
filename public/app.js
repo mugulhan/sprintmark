@@ -57,6 +57,28 @@ const localDateTime = (value) =>
         timeZone: state.meta?.timezone,
       }).format(new Date(value))
     : "—";
+const relativeElapsed = (value) => {
+  if (!value) return "";
+  const elapsedSeconds = Math.round((Date.now() - Date.parse(value)) / 1000);
+  const units = [
+    ["year", 31536000],
+    ["month", 2592000],
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+    ["second", 1],
+  ];
+  const [unit, seconds] =
+    units.find(([, threshold]) => Math.abs(elapsedSeconds) >= threshold) ||
+    units.at(-1);
+  return new Intl.RelativeTimeFormat(document.documentElement.lang || "tr", {
+    numeric: "auto",
+  }).format(-Math.round(elapsedSeconds / seconds), unit);
+};
+const workItemStatuses = (item) =>
+  item.kind === "backlog"
+    ? ["triage", "software", "waiting", "done"]
+    : ["open", "done"];
 const canonical = (item) => `/work-items/${item.key}/${item.slug}`;
 const projectCanonical = (project) =>
   `/projects/${project.key}/${project.slug}`;
@@ -173,7 +195,10 @@ function card(item) {
   const priority = item.priority
     ? `<span class="priority ${item.priority}">${priorityName(item.priority)}</span>`
     : "";
-  return `<button class="card ${item.status}" draggable="${item.kind === "task"}" data-key="${item.key}" data-uid="${item.uid}"><span class="card-meta"><span class="card-key">${item.key.replace(`${project?.code || "WORK"}-`, "")}</span>${time}${priority}</span>${escapeHtml(item.title)}<span class="card-team">${teamName(item.team)}</span></button>`;
+  const completed = item.completed_at
+    ? `<time class="card-completed" datetime="${escapeHtml(item.completed_at)}" title="${escapeHtml(localDateTime(item.completed_at))}">✓ ${escapeHtml(relativeElapsed(item.completed_at))}</time>`
+    : "";
+  return `<button class="card ${item.status}" draggable="${item.kind === "task"}" data-key="${item.key}" data-uid="${item.uid}"><span class="card-meta"><span class="card-key">${item.key.replace(`${project?.code || "WORK"}-`, "")}</span>${time}${priority}</span>${escapeHtml(item.title)}<span class="card-team">${teamName(item.team)}</span>${completed}</button>`;
 }
 function renderSprintStrip() {
   const sprints = projectSprints();
@@ -309,7 +334,7 @@ function renderProjectDashboard() {
     <section class="dashboard-section"><div class="section-head"><div><h3>Son güncellenen işler</h3><p>Güncelleme zamanına göre son kayıtlar</p></div></div><div class="recent-items">${recent
       .map(
         (item) =>
-          `<button data-key="${item.key}"><span><strong>${item.key}</strong>${escapeHtml(item.title)}</span><small>${item.updated_at.slice(0, 10)} · ${statusName(item.status)}</small></button>`,
+          `<button data-key="${item.key}"><span><strong>${item.key}</strong>${escapeHtml(item.title)}</span><small>${item.completed_at ? `✓ ${escapeHtml(relativeElapsed(item.completed_at))} · ` : ""}${item.updated_at.slice(0, 10)} · ${statusName(item.status)}</small></button>`,
       )
       .join("")}</div></section>`;
 }
@@ -378,9 +403,26 @@ async function openItem(key, push = true) {
   $("detailKey").textContent = item.key;
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
   $("detailStatus").textContent = statusName(item.status);
+  $("detailPriority").textContent = priorityName(item.priority);
   $("detailTeam").textContent = teamName(item.team);
+  $("editStatus").innerHTML = workItemStatuses(item)
+    .map((status) => `<option value="${status}">${statusName(status)}</option>`)
+    .join("");
+  $("editStatus").value = item.status;
+  $("editTeam").value = item.team;
+  $("editPriority").value = item.priority || "";
+  $("editDate").value = item.scheduled_for || "";
+  $("editTime").value = item.scheduled_time || "";
+  $("toggleDone").textContent =
+    item.status === "done"
+      ? t("Yeniden aç")
+      : t("✓ Tamamlandı olarak işaretle");
+  $("toggleDone").classList.toggle("reopen", item.status === "done");
+  const completionFact = item.completed_at
+    ? `<dt>Tamamlanma</dt><dd class="completion-time"><time datetime="${escapeHtml(item.completed_at)}">${localDateTime(item.completed_at)}</time><small>${escapeHtml(relativeElapsed(item.completed_at))}</small></dd>`
+    : "";
   $("facts").innerHTML =
-    `<dt>Proje</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>Takvim</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>Öncelik</dt><dd>${priorityName(item.priority)}</dd><dt>Oluşturma</dt><dd>${localDateTime(item.created_at)}</dd><dt>Güncelleme</dt><dd>${localDateTime(item.updated_at)}</dd><dt>Eski kimlik</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
+    `<dt>Proje</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>Takvim</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>Öncelik</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>Oluşturma</dt><dd>${localDateTime(item.created_at)}</dd><dt>Güncelleme</dt><dd>${localDateTime(item.updated_at)}</dd><dt>Eski kimlik</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
   $("detailBody").hidden = false;
   $("detailEditor").hidden = true;
   $("editorActions").hidden = true;
@@ -456,18 +498,10 @@ async function startWorkItemEdit() {
   $("detailEditor").hidden = false;
   $("editorActions").hidden = false;
   $("editWorkItem").hidden = true;
-  $("editMetadata").hidden = false;
-  $("editStatus").innerHTML = [
-    ...new Set(state.items.map((item) => item.status)),
-  ]
-    .map((status) => `<option value="${status}">${statusName(status)}</option>`)
-    .join("");
-  $("editStatus").value = state.selected.status;
-  $("editTeam").value = state.selected.team;
-  $("editPriority").value = state.selected.priority || "";
-  $("editDate").value = state.selected.scheduled_for || "";
-  $("editTime").value = state.selected.scheduled_time || "";
   $("editConflict").hidden = true;
+  [...$("editMetadata").elements, $("toggleDone")].forEach(
+    (control) => (control.disabled = true),
+  );
   state.editingWorkItem = true;
   state.detailDirty = false;
   state.detailEditor = makeEditor(
@@ -490,7 +524,9 @@ function finishWorkItemEdit(item = state.selected) {
   $("editorActions").hidden = true;
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
-  $("editMetadata").hidden = true;
+  [...$("editMetadata").elements, $("toggleDone")].forEach(
+    (control) => (control.disabled = false),
+  );
   $("detailBody").hidden = false;
   window.requestAnimationFrame(() => renderWorkItemViewer(item?.body || ""));
 }
@@ -511,22 +547,8 @@ async function saveWorkItemBody() {
   const patch = {
     body,
     draft_id: state.editDraftId,
-    status: $("editStatus").value,
-    team: $("editTeam").value,
-    priority: $("editPriority").value || null,
-    scheduled_for: $("editDate").value || null,
-    scheduled_time: $("editTime").value || null,
   };
-  const metadataChanged =
-    patch.status !== state.selected.status ||
-    patch.team !== state.selected.team ||
-    patch.priority !== state.selected.priority ||
-    patch.scheduled_for !== state.selected.scheduled_for ||
-    patch.scheduled_time !== state.selected.scheduled_time;
-  if (
-    body.trim() === String(state.selected.body || "").trim() &&
-    !metadataChanged
-  ) {
+  if (body.trim() === String(state.selected.body || "").trim()) {
     await deleteDraft(state.editDraftId);
     state.editDraftId = null;
     finishWorkItemEdit();
@@ -556,6 +578,36 @@ async function saveWorkItemBody() {
   );
   render();
   finishWorkItemEdit(updated);
+}
+async function patchSelectedWorkItem(patch) {
+  if (!state.selected) return null;
+  const response = await fetch(`/api/v1/work-items/${state.selected.uid}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "If-Match": state.selected._etag,
+    },
+    body: JSON.stringify(patch),
+  });
+  if (response.status === 409) {
+    alert(
+      "İş başka bir işlemde güncellendi. Güncel bilgiler yüklenecek; değişikliği yeniden uygulayın.",
+    );
+    await openItem(state.selected.key, false);
+    return null;
+  }
+  if (!response.ok) {
+    alert((await response.json()).error || "İş bilgileri güncellenemedi.");
+    return null;
+  }
+  const updated = await response.json();
+  state.selected = updated;
+  state.items = state.items.map((item) =>
+    item.uid === updated.uid ? updated : item,
+  );
+  render();
+  await openItem(updated.key, false);
+  return updated;
 }
 async function openCreateDialog(context = null) {
   if (currentProject()?.status !== "active") return;
@@ -607,8 +659,11 @@ async function load() {
     state.projects.find((project) => project.status === "active")?.key ||
     state.projects[0]?.key;
   renderProjectOptions();
-  $("buildMeta").textContent =
-    `v${meta.version} · ${meta.branch} · ${meta.sha} · ${meta.dirty ? "çalışma ağacı kirli" : "temiz"}`;
+  $("buildMeta").textContent = `v${meta.version}`;
+  $("buildMeta").setAttribute("aria-label", `Sprintmark sürüm ${meta.version}`);
+  $("buildMeta").dataset.branch = meta.branch;
+  $("buildMeta").dataset.commit = meta.sha;
+  $("buildMeta").dataset.dirty = String(Boolean(meta.dirty));
   const statuses = [...new Set(state.items.map((i) => i.status))];
   $("statusFilter").innerHTML =
     '<option value="">Tüm durumlar</option>' +
@@ -916,6 +971,32 @@ $("copyLink").onclick = async () => {
   );
 };
 $("editWorkItem").onclick = startWorkItemEdit;
+$("editMetadata").onsubmit = async (event) => {
+  event.preventDefault();
+  const button = $("saveMetadata");
+  button.disabled = true;
+  await patchSelectedWorkItem({
+    status: $("editStatus").value,
+    team: $("editTeam").value,
+    priority: $("editPriority").value || null,
+    scheduled_for: $("editDate").value || null,
+    scheduled_time: $("editTime").value || null,
+  });
+  button.disabled = false;
+};
+$("toggleDone").onclick = async () => {
+  if (!state.selected) return;
+  $("toggleDone").disabled = true;
+  await patchSelectedWorkItem({
+    status:
+      state.selected.status === "done"
+        ? state.selected.kind === "backlog"
+          ? "triage"
+          : "open"
+        : "done",
+  });
+  $("toggleDone").disabled = false;
+};
 $("cancelWorkItemEdit").onclick = cancelWorkItemEdit;
 $("saveWorkItem").onclick = saveWorkItemBody;
 $("copyDraft").onclick = async () => {

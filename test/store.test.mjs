@@ -76,6 +76,40 @@ test("store persists priority and planned time while rejecting invalid values", 
   );
 });
 
+test("store timestamps done transitions and clears completion when reopened", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-store-"));
+  const store = new WorkItemStore(workspace);
+  const created = await store.create({ title: "Lifecycle" });
+  assert.equal(created.completed_at, null);
+
+  const completed = await store.patch(
+    created.uid,
+    { status: "done" },
+    created._etag,
+  );
+  assert.equal(completed.status, "done");
+  assert.ok(!Number.isNaN(Date.parse(completed.completed_at)));
+  assert.equal(completed.completed_at, completed.updated_at);
+
+  const reopened = await store.patch(
+    completed.uid,
+    { status: "open" },
+    completed._etag,
+  );
+  assert.equal(reopened.status, "open");
+  assert.equal(reopened.completed_at, null);
+
+  const completedAgain = await store.patch(
+    reopened.uid,
+    { status: "done" },
+    reopened._etag,
+  );
+  assert.ok(
+    Date.parse(completedAgain.completed_at) >=
+      Date.parse(completed.completed_at),
+  );
+});
+
 test("attachment guard rejects unsupported and oversized files", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "sprintmark-store-"));
   const store = new WorkItemStore(workspace);

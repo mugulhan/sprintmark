@@ -1,6 +1,6 @@
 {
   "name": "sprintmark",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "Local-first, file-backed project and sprint tracker",
@@ -21,6 +21,7 @@
     "build:vendor": "node scripts/build-vendor.mjs",
     "prestart": "npm run build:vendor",
     "start": "node src/server.mjs",
+    "migrate:v2": "node scripts/migrate-work-items-v2.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "lint": "eslint .",
     "format:check": "prettier --check .",

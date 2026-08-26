@@ -11,7 +11,14 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
     readFile(resolve(publicRoot, "app.js"), "utf8"),
   ]);
   assert.match(html, /data-view="projects"/);
+  assert.match(html, /class="brand-lockup"/);
+  assert.match(html, /sprintmark-mark\.svg/);
+  assert.match(html, /class="nav projects-home"/);
+  assert.equal((html.match(/data-view="projects"/g) || []).length, 1);
   assert.match(html, /id="createEditor"/);
+  assert.match(html, /id="editStatus"/);
+  assert.match(html, /id="editPriority"/);
+  assert.match(html, /id="toggleDone"/);
   assert.match(html, /vendor\/toastui-editor\.js/);
   assert.match(app, /window\.toastui\.Editor/);
   assert.match(app, /viewer: true/);
@@ -27,4 +34,9 @@ test("the rich viewer replaces the legacy Markdown renderer so tables can render
   assert.match(app, /data-create-date/);
   assert.match(app, /scheduled_time/);
   assert.match(app, /priorityFilter/);
+  assert.match(app, /completed_at/);
+  assert.match(app, /relativeElapsed/);
+  assert.match(app, /patchSelectedWorkItem/);
+  assert.match(app, /`v\$\{meta\.version\}`/);
+  assert.doesNotMatch(app, /çalışma ağacı kirli/);
 });

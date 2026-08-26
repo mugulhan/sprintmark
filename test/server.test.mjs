@@ -65,12 +65,31 @@ test("API returns ETags and rejects stale updates", async (context) => {
     body: JSON.stringify({ status: "done" }),
   });
   assert.equal(update.status, 200);
+  const completed = await update.json();
+  assert.equal(completed.status, "done");
+  assert.ok(!Number.isNaN(Date.parse(completed.completed_at)));
+  assert.equal(completed.completed_at, completed.updated_at);
   const stale = await fetch(`${base}/api/v1/work-items/${item.uid}`, {
     method: "PATCH",
     headers: { "content-type": "application/json", "if-match": etag },
     body: JSON.stringify({ status: "open" }),
   });
   assert.equal(stale.status, 409);
+
+  const reopenedResponse = await fetch(
+    `${base}/api/v1/work-items/${item.uid}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "if-match": completed._etag,
+      },
+      body: JSON.stringify({ status: "open" }),
+    },
+  );
+  assert.equal(reopenedResponse.status, 200);
+  const reopened = await reopenedResponse.json();
+  assert.equal(reopened.completed_at, null);
 });
 
 test("sprint API persists valid ranges and rejects reversed dates", async (context) => {
@@ -206,13 +225,18 @@ test("rich editor assets are served locally", async (context) => {
   const { server, base } = await fixture();
   context.after(() => server.close());
   for (const path of [
+    "/sprintmark-mark.svg",
     "/vendor/toastui-editor.js",
     "/vendor/toastui-editor.css",
     "/vendor/dompurify.js",
   ]) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 200, path);
-    assert.ok(Number(response.headers.get("content-length")) > 1000, path);
+    assert.ok(
+      Number(response.headers.get("content-length")) >
+        (path.endsWith(".svg") ? 500 : 1000),
+      path,
+    );
   }
 });
 

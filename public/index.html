@@ -4,24 +4,42 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Sprintmark</title>
+    <meta name="theme-color" content="#052f63" />
+    <link rel="icon" type="image/svg+xml" href="/sprintmark-mark.svg" />
     <link rel="stylesheet" href="/vendor/toastui-editor.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header>
       <div class="header-row">
-        <div>
-          <h1>Sprintmark</h1>
-          <div id="buildMeta" class="build-meta">Sürüm bilgisi yükleniyor…</div>
+        <div class="brand-lockup">
+          <img
+            class="brand-mark"
+            src="/sprintmark-mark.svg"
+            alt=""
+            width="44"
+            height="44"
+            aria-hidden="true"
+          />
+          <div class="brand-copy">
+            <h1>Sprintmark</h1>
+            <div id="buildMeta" class="build-meta">Sürüm yükleniyor…</div>
+          </div>
         </div>
         <nav>
           <button class="nav active" data-view="calendar">Takvim</button
           ><button class="nav" data-view="backlog">Sorun Backlog'u</button
-          ><button class="nav" data-view="projects">Projeler</button
           ><button id="newItem">Yeni iş</button>
         </nav>
       </div>
       <div class="filters">
+        <button
+          class="nav projects-home"
+          data-view="projects"
+          aria-label="Projeler ekranına dön"
+        >
+          <span aria-hidden="true">←</span> Projeler
+        </button>
         <label class="project-picker"
           ><span>Proje</span
           ><select id="projectSelect"></select
@@ -106,7 +124,8 @@
           <h2 id="detailTitle"></h2>
           <div class="identity">
             <span id="detailKey"></span><span id="detailUid"></span
-            ><span id="detailStatus"></span><span id="detailTeam"></span>
+            ><span id="detailStatus"></span><span id="detailPriority"></span
+            ><span id="detailTeam"></span>
           </div>
         </div>
         <button class="close" aria-label="Kapat">×</button>
@@ -114,8 +133,8 @@
       <div class="detail-grid">
         <aside class="actions">
           <button id="copyLink">Kalıcı bağlantıyı kopyala</button>
-          <button id="editWorkItem">İçeriği düzenle</button>
-          <div id="editMetadata" class="edit-metadata" hidden>
+          <form id="editMetadata" class="edit-metadata">
+            <h3>İş bilgileri</h3>
             <label>Durum<select id="editStatus"></select></label>
             <label
               >Ekip<select id="editTeam">
@@ -134,7 +153,14 @@
             >
             <label>Tarih<input id="editDate" type="date" /></label>
             <label>Saat<input id="editTime" type="time" /></label>
-          </div>
+            <button id="saveMetadata" type="submit" class="primary">
+              Bilgileri güncelle
+            </button>
+          </form>
+          <button id="toggleDone" type="button" class="completion-action">
+            Tamamlandı olarak işaretle
+          </button>
+          <button id="editWorkItem">İçeriği düzenle</button>
           <dl id="facts"></dl>
           <form id="attachmentForm" tabindex="0">
             <h3>Kanıt görseli ekle</h3>
