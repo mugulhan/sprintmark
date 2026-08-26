@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and usage questions
+    url: https://github.com/mugulhan/sprintmark/discussions
+    about: Ask installation, configuration, and usage questions in Discussions.
+  - name: Security vulnerability
+    url: https://github.com/mugulhan/sprintmark/security/advisories/new
+    about: Privately report a suspected security vulnerability.

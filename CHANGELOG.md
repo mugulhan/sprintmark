@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
+
+## [Unreleased]
+
+## [0.5.0] - 2026-08-26
+
+### Added
+
+- Stable project, sprint and work-item identities with canonical URLs.
+- Calendar and backlog views with drag-and-drop scheduling.
+- Project dashboards and Markdown WYSIWYG editing.
+- Clipboard and evidence image uploads through expiring draft sessions.
+- Priority levels, filters, scheduled times, Turkish and English UI modes.
+- Docker and GitHub Container Registry distribution.
+
+[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mugulhan/sprintmark/releases/tag/v0.5.0

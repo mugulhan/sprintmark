@@ -1,0 +1,8 @@
+.git
+.github
+data
+node_modules
+dist
+npm-debug.log
+*.md
+!README.md

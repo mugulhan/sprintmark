@@ -1,0 +1,16 @@
+services:
+  sprintmark:
+    build: .
+    image: ghcr.io/mugulhan/sprintmark:latest
+    ports:
+      - "127.0.0.1:4310:4310"
+    environment:
+      SPRINTMARK_DATA_DIR: /data
+      SPRINTMARK_TIMEZONE: ${SPRINTMARK_TIMEZONE:-Europe/Istanbul}
+      SPRINTMARK_DEFAULT_LOCALE: ${SPRINTMARK_DEFAULT_LOCALE:-en}
+    volumes:
+      - sprintmark-data:/data
+    restart: unless-stopped
+
+volumes:
+  sprintmark-data:

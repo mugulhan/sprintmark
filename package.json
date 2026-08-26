@@ -1,0 +1,43 @@
+{
+  "name": "sprintmark",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first, file-backed project and sprint tracker",
+  "license": "Apache-2.0",
+  "author": "Muhammet Gülhan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mugulhan/sprintmark.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mugulhan/sprintmark/issues"
+  },
+  "homepage": "https://github.com/mugulhan/sprintmark#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "prestart": "npm run build:vendor",
+    "start": "node src/server.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "pretest": "npm run build:vendor",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@toast-ui/editor": "3.2.2",
+    "busboy": "1.6.0",
+    "yaml": "^2.8.1"
+  },
+  "overrides": {
+    "dompurify": "3.4.14"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9",
+    "eslint": "^9.35.0",
+    "prettier": "^3.6.2"
+  }
+}

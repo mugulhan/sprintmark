@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sprintmark</title>
+    <link rel="stylesheet" href="/vendor/toastui-editor.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <div>
+          <h1>Sprintmark</h1>
+          <div id="buildMeta" class="build-meta">Sürüm bilgisi yükleniyor…</div>
+        </div>
+        <nav>
+          <button class="nav active" data-view="calendar">Takvim</button
+          ><button class="nav" data-view="backlog">Sorun Backlog'u</button
+          ><button class="nav" data-view="projects">Projeler</button
+          ><button id="newItem">Yeni iş</button>
+        </nav>
+      </div>
+      <div class="filters">
+        <label class="project-picker"
+          ><span>Proje</span
+          ><select id="projectSelect"></select
+        ></label>
+        <button id="newProject">Yeni proje</button>
+        <button id="previousMonth" aria-label="Önceki ay">←</button
+        ><strong id="monthLabel"></strong
+        ><button id="nextMonth" aria-label="Sonraki ay">→</button>
+        <button id="today">Son aya git</button>
+        <select id="statusFilter">
+          <option value="">Tüm durumlar</option>
+        </select>
+        <select id="teamFilter">
+          <option value="">Tüm ekipler</option>
+          <option value="content-technical">İçerik / Teknik</option>
+          <option value="web-development">Web Yazılım</option>
+        </select>
+        <select id="priorityFilter" aria-label="Öncelik filtresi">
+          <option value="">Tüm öncelikler</option>
+          <option value="critical">Kritik</option>
+          <option value="high">Yüksek</option>
+          <option value="medium">Orta</option>
+          <option value="low">Düşük</option>
+          <option value="none">Belirlenmedi</option>
+        </select>
+        <select id="localeSelect" aria-label="Dil">
+          <option value="tr">TR</option>
+          <option value="en">EN</option>
+        </select>
+        <input id="search" type="search" placeholder="Görevlerde ara…" />
+        <button id="sprintButton" class="sprint-button">Sprint oluştur</button>
+        <span id="plannerStatus" class="planner-status" hidden></span>
+        <span id="summary" class="summary"></span>
+      </div>
+    </header>
+    <main>
+      <section id="calendarView">
+        <div id="sprintStrip" class="sprint-strip"></div>
+        <div class="calendar-layout">
+          <div class="calendar-main">
+            <div class="weekdays">
+              <span>Pazartesi</span><span>Salı</span><span>Çarşamba</span
+              ><span>Perşembe</span><span>Cuma</span><span>Cumartesi</span
+              ><span>Pazar</span>
+            </div>
+            <div id="calendar" class="calendar"></div>
+          </div>
+          <aside class="undated" data-drop-date="">
+            <div class="undated-head">
+              <strong>Tarihi bulunmayan işler</strong>
+              <span id="undatedCount"></span>
+            </div>
+            <p>Kartı takvimdeki bir güne sürükleyin.</p>
+            <div id="undated"></div>
+            <div class="drop-back">Tarihi kaldırmak için buraya bırakın</div>
+          </aside>
+        </div>
+      </section>
+      <section id="backlogView" hidden>
+        <div id="board" class="board"></div>
+      </section>
+      <section id="projectsView" hidden>
+        <div class="projects-layout">
+          <aside class="project-list-panel">
+            <div class="section-head">
+              <div>
+                <h2>Projeler</h2>
+                <p>Aktif ve arşivlenmiş çalışma alanları</p>
+              </div>
+              <button id="newProjectFromList">Yeni proje</button>
+            </div>
+            <div id="projectList" class="project-list"></div>
+          </aside>
+          <div id="projectDashboard" class="project-dashboard"></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="detail">
+      <div class="dialog-head">
+        <div>
+          <h2 id="detailTitle"></h2>
+          <div class="identity">
+            <span id="detailKey"></span><span id="detailUid"></span
+            ><span id="detailStatus"></span><span id="detailTeam"></span>
+          </div>
+        </div>
+        <button class="close" aria-label="Kapat">×</button>
+      </div>
+      <div class="detail-grid">
+        <aside class="actions">
+          <button id="copyLink">Kalıcı bağlantıyı kopyala</button>
+          <button id="editWorkItem">İçeriği düzenle</button>
+          <div id="editMetadata" class="edit-metadata" hidden>
+            <label>Durum<select id="editStatus"></select></label>
+            <label
+              >Ekip<select id="editTeam">
+                <option value="content-technical">İçerik / Teknik</option>
+                <option value="web-development">Web Yazılım</option>
+              </select></label
+            >
+            <label
+              >Öncelik<select id="editPriority">
+                <option value="">Belirlenmedi</option>
+                <option value="critical">Kritik</option>
+                <option value="high">Yüksek</option>
+                <option value="medium">Orta</option>
+                <option value="low">Düşük</option>
+              </select></label
+            >
+            <label>Tarih<input id="editDate" type="date" /></label>
+            <label>Saat<input id="editTime" type="time" /></label>
+          </div>
+          <dl id="facts"></dl>
+          <form id="attachmentForm" tabindex="0">
+            <h3>Kanıt görseli ekle</h3>
+            <input
+              id="attachment"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+            /><button type="submit">Yükle</button>
+            <div class="paste-zone" id="evidencePasteZone" tabindex="0">
+              Dosya seçin, sürükleyin veya panodan Ctrl+V ile yapıştırın.
+            </div>
+            <small>PNG, JPEG, WebP veya GIF; dosya başına en fazla 8 MB.</small>
+          </form>
+          <div id="attachments"></div>
+        </aside>
+        <div class="content-panel">
+          <div id="editConflict" class="conflict-banner" hidden>
+            <strong>Bu kayıt başka bir işlemde güncellendi.</strong>
+            <span>Editördeki taslağınız korunuyor.</span>
+            <div>
+              <button id="copyDraft">Taslağı panoya kopyala</button>
+              <button id="reloadWorkItem">Güncel sürümü yükle</button>
+            </div>
+          </div>
+          <article id="detailBody" class="markdown"></article>
+          <div id="detailEditor" class="rich-editor" hidden></div>
+          <div id="editorActions" class="editor-actions" hidden>
+            <button id="cancelWorkItemEdit">Vazgeç</button>
+            <button id="saveWorkItem" class="primary">Kaydet</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="projectEditDialog" class="create-dialog">
+      <form id="projectEditForm">
+        <div class="dialog-head">
+          <h2>Proje bilgilerini düzenle</h2>
+          <button type="button" class="close">×</button>
+        </div>
+        <label>Proje adı<input name="name" required maxlength="120" /></label>
+        <label
+          >Açıklama<textarea
+            name="description"
+            rows="5"
+            maxlength="10000"
+          ></textarea>
+        </label>
+        <label
+          >Durum<select name="status">
+            <option value="active">Aktif</option>
+            <option value="archived">Arşivlendi</option>
+          </select></label
+        >
+        <div class="immutable-note" id="projectImmutable"></div>
+        <div class="form-actions">
+          <button type="button" class="close">Vazgeç</button>
+          <button type="submit" class="primary">Projeyi güncelle</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="projectDialog" class="create-dialog">
+      <form id="projectForm">
+        <div class="dialog-head">
+          <h2>Yeni proje oluştur</h2>
+          <button type="button" class="close">×</button>
+        </div>
+        <label>Proje adı<input name="name" required maxlength="120" /></label>
+        <label
+          >Kısa kod<input
+            name="code"
+            required
+            minlength="2"
+            maxlength="8"
+            pattern="[A-Za-z][A-Za-z0-9]{1,7}"
+            placeholder="Örn. ASG"
+          /><small
+            >İş ve sprint anahtarlarında kullanılır; sonradan değişmez.</small
+          ></label
+        >
+        <div class="form-actions">
+          <button type="button" class="close">Vazgeç</button>
+          <button type="submit" class="primary">Projeyi oluştur</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="sprintDialog" class="create-dialog">
+      <form id="sprintForm">
+        <div class="dialog-head">
+          <h2>Yeni sprint oluştur</h2>
+          <button type="button" class="close">×</button>
+        </div>
+        <label>Sprint adı<input name="name" required maxlength="120" /></label>
+        <div class="date-fields">
+          <label
+            >Başlangıç<input name="start_date" type="date" required
+          /></label>
+          <label>Bitiş<input name="end_date" type="date" required /></label>
+        </div>
+        <label
+          >Durum<select name="status">
+            <option value="planned">Planlandı</option>
+            <option value="active">Aktif</option>
+          </select></label
+        >
+        <div class="sprint-help">
+          Tarihleri alanlardan girebilir veya takvim üzerinde başlangıç ve bitiş
+          günlerini seçebilirsiniz.
+        </div>
+        <div class="form-actions split-actions">
+          <button type="button" id="selectSprintDates">Takvimden seç</button>
+          <span></span>
+          <button type="button" class="close">Vazgeç</button>
+          <button type="submit" class="primary">Sprint oluştur</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="createDialog" class="create-dialog">
+      <form id="createForm">
+        <div class="dialog-head">
+          <h2>Yeni iş kaydı</h2>
+          <button type="button" class="close">×</button>
+        </div>
+        <label
+          >Tür<select name="kind">
+            <option value="task">Görev</option>
+            <option value="backlog">Backlog</option>
+          </select></label
+        ><label>Başlık<input name="title" required maxlength="240" /></label
+        ><label
+          >Ekip<select name="team">
+            <option value="content-technical">İçerik / Teknik</option>
+            <option value="web-development">Web Yazılım</option>
+          </select></label
+        ><label
+          >Öncelik<select name="priority">
+            <option value="">Belirlenmedi</option>
+            <option value="critical">Kritik</option>
+            <option value="high">Yüksek</option>
+            <option value="medium">Orta</option>
+            <option value="low">Düşük</option>
+          </select></label
+        >
+        <div class="date-fields">
+          <label>Takvim tarihi<input name="scheduled_for" type="date" /></label
+          ><label
+            >Planlanan saat<input name="scheduled_time" type="time"
+          /></label>
+        </div>
+        <label
+          >Detay
+          <div id="createEditor" class="rich-editor"></div
+        ></label>
+        <div class="paste-zone" id="createEvidencePasteZone" tabindex="0">
+          Kanıt görsellerini buraya bırakın veya Ctrl+V ile yapıştırın.
+        </div>
+        <div class="form-actions">
+          <button type="button" class="close">Vazgeç</button
+          ><button type="submit" class="primary">Kaydı oluştur</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="/vendor/dompurify.js"></script>
+    <script src="/vendor/toastui-editor.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
