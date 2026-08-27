@@ -41,6 +41,25 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
   assert.doesNotMatch(app, /Henüz sprint oluşturulmadı/);
 });
 
+test("task viewer links always open in a separate safe tab", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /function openLinksInNewTab\(root\)/);
+  assert.match(app, /link\.target = "_blank"/);
+  assert.match(app, /link\.rel = "noopener noreferrer"/);
+  assert.match(app, /openLinksInNewTab\(\$\("detailBody"\)\)/);
+});
+
+test("calendar overflow buttons expand and collapse every item in a day", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /expandedDays: new Set\(\)/);
+  assert.match(app, /const visibleItems = expanded \? dayItems : dayItems\.slice\(0, 4\)/);
+  assert.match(app, /aria-expanded="\$\{expanded\}"/);
+  assert.match(app, /e\.target\.closest\("\.more\[data-day\]"\)/);
+  assert.match(app, /state\.expandedDays\.add\(day\)/);
+  assert.match(app, /state\.expandedDays\.delete\(day\)/);
+  assert.match(app, /renderCalendar\(\)/);
+});
+
 test("the rich viewer replaces the legacy Markdown renderer so tables can render", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /renderWorkItemViewer/);

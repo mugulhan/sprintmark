@@ -10,6 +10,7 @@ const state = {
   selected: null,
   draggingUid: null,
   suppressCardClick: false,
+  expandedDays: new Set(),
   sprintSelection: { active: false, start: null },
   detailEditor: null,
   detailViewer: null,
@@ -147,6 +148,12 @@ function makeEditor(
   if (onChange) editor.on("change", onChange);
   return editor;
 }
+function openLinksInNewTab(root) {
+  for (const link of root.querySelectorAll("a")) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+}
 function renderWorkItemViewer(markdown) {
   state.detailViewer?.destroy();
   $("detailBody").innerHTML = "";
@@ -157,6 +164,7 @@ function renderWorkItemViewer(markdown) {
     usageStatistics: false,
     customHTMLSanitizer: sanitizeEditorHtml,
   });
+  openLinksInNewTab($("detailBody"));
 }
 function hasUnsavedWorkItem() {
   return state.editingWorkItem && state.detailDirty;
@@ -255,7 +263,13 @@ function renderCalendar() {
           `<span class="sprint-dot" title="${escapeHtml(sprint.name)}"></span>`,
       )
       .join("");
-    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><div class="date"><span>${date.getDate()}</span><span><button class="day-add" data-create-date="${iso}" title="Bu güne iş ekle">+</button><span class="count">${dayItems.length ? `${dayItems.length} iş` : ""}</span></span></div><div class="sprint-markers">${markers}</div>${dayItems.slice(0, 4).map(card).join("")}${dayItems.length > 4 ? `<button class="more" data-day="${iso}">+${dayItems.length - 4} daha</button>` : ""}</div>`;
+    const expanded = state.expandedDays.has(iso);
+    const visibleItems = expanded ? dayItems : dayItems.slice(0, 4);
+    const moreButton =
+      dayItems.length > 4
+        ? `<button class="more" data-day="${iso}" aria-expanded="${expanded}">${expanded ? "Daha az göster" : `+${dayItems.length - 4} daha`}</button>`
+        : "";
+    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><div class="date"><span>${date.getDate()}</span><span><button class="day-add" data-create-date="${iso}" title="Bu güne iş ekle">+</button><span class="count">${dayItems.length ? `${dayItems.length} iş` : ""}</span></span></div><div class="sprint-markers">${markers}</div>${visibleItems.map(card).join("")}${moreButton}</div>`;
   }
   $("calendar").innerHTML = html;
   const undated = items.filter((i) => !i.scheduled_for);
@@ -707,6 +721,15 @@ async function load() {
   if (route) openItem(route[1], false);
 }
 document.addEventListener("click", (e) => {
+  const moreButton = e.target.closest(".more[data-day]");
+  if (moreButton) {
+    e.stopPropagation();
+    const day = moreButton.dataset.day;
+    if (state.expandedDays.has(day)) state.expandedDays.delete(day);
+    else state.expandedDays.add(day);
+    renderCalendar();
+    return;
+  }
   const createForDate = e.target.closest("[data-create-date]");
   if (createForDate) {
     e.stopPropagation();
