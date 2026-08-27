@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,7 +31,12 @@ async function fixture() {
   const server = createWorkTrackerServer({ workspace });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  return { server, item: patchedRaw, base: `http://127.0.0.1:${address.port}` };
+  return {
+    server,
+    workspace,
+    item: patchedRaw,
+    base: `http://127.0.0.1:${address.port}`,
+  };
 }
 
 test("canonical and legacy routes use permanent redirects and unknown keys return 404", async (context) => {
@@ -322,4 +327,98 @@ test("evidence API uploads and removes gallery images with ETags", async (contex
   assert.equal(remove.status, 200);
   assert.equal((await remove.json()).attachments.length, 0);
   assert.equal((await fetch(`${base}${uploaded.attachment.url}`)).status, 404);
+});
+
+test("evidence API opens text files inline and forces Office downloads", async (context) => {
+  const { server, item, base } = await fixture();
+  context.after(() => server.close());
+  const csvForm = new globalThis.FormData();
+  csvForm.append(
+    "file",
+    new globalThis.Blob(["old,new\n/a,/b\n"], { type: "text/csv" }),
+    "redirects.csv",
+  );
+  csvForm.append("placement", "evidence");
+  const csvUpload = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/attachments`,
+    { method: "POST", body: csvForm },
+  );
+  assert.equal(csvUpload.status, 201);
+  const csv = await csvUpload.json();
+  const opened = await fetch(`${base}${csv.attachment.url}`);
+  assert.equal(opened.status, 200);
+  assert.match(opened.headers.get("content-type"), /^text\/csv/);
+  assert.match(opened.headers.get("content-disposition"), /^inline;/);
+  assert.equal(await opened.text(), "old,new\n/a,/b\n");
+  const downloaded = await fetch(`${base}${csv.attachment.url}?download=1`);
+  assert.match(downloaded.headers.get("content-disposition"), /^attachment;/);
+  assert.equal(downloaded.headers.get("x-content-type-options"), "nosniff");
+
+  const xlsxForm = new globalThis.FormData();
+  xlsxForm.append(
+    "file",
+    new globalThis.Blob([Buffer.from("504b030400000000", "hex")], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    "report.xlsx",
+  );
+  xlsxForm.append("placement", "evidence");
+  const xlsxUpload = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/attachments`,
+    { method: "POST", body: xlsxForm },
+  );
+  assert.equal(xlsxUpload.status, 201);
+  const xlsx = await xlsxUpload.json();
+  const office = await fetch(`${base}${xlsx.attachment.url}`);
+  assert.match(office.headers.get("content-disposition"), /^attachment;/);
+});
+
+test("workspace file references are discoverable, task-scoped and safe", async (context) => {
+  const { server, workspace, base } = await fixture();
+  context.after(() => server.close());
+  const runDirectory = join(workspace, "data", "runs", "audit");
+  await mkdir(runDirectory, { recursive: true });
+  await writeFile(join(runDirectory, "result.json"), '{"valid":334}\n', "utf8");
+  await writeFile(join(workspace, ".env"), "SECRET=value\n", "utf8");
+  const store = new WorkItemStore(workspace);
+  const referenced = await store.create({
+    title: "Referans API",
+    body: [
+      "## Kanıtlar",
+      "- `data/runs/audit/result.json`",
+      "- `data/runs/audit/missing.csv`",
+      "- `.env`",
+    ].join("\n"),
+  });
+  const referencesResponse = await fetch(
+    `${base}/api/v1/work-items/${referenced.uid}/file-references`,
+  );
+  assert.equal(referencesResponse.status, 200);
+  const references = await referencesResponse.json();
+  assert.equal(references.count, 2);
+  assert.equal(references.items[0].exists, true);
+  assert.equal(references.items[1].exists, false);
+  const opened = await fetch(`${base}${references.items[0].url}`);
+  assert.equal(opened.status, 200);
+  assert.match(opened.headers.get("content-type"), /^application\/json/);
+  assert.equal(await opened.text(), '{"valid":334}\n');
+  const downloaded = await fetch(`${base}${references.items[0].download_url}`);
+  assert.match(downloaded.headers.get("content-disposition"), /^attachment;/);
+  assert.equal(
+    (
+      await fetch(
+        `${base}/work-item-files/${referenced.uid}?path=${encodeURIComponent(".env")}`,
+      )
+    ).status,
+    404,
+  );
+  const unrelated = await store.create({ title: "İlişkisiz görev" });
+  assert.equal(
+    (
+      await fetch(
+        `${base}/work-item-files/${unrelated.uid}?path=${encodeURIComponent("data/runs/audit/result.json")}`,
+      )
+    ).status,
+    404,
+  );
 });

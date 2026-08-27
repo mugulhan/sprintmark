@@ -139,12 +139,12 @@
           <button id="editWorkItem">İçeriği düzenle</button>
           <dl id="facts"></dl>
           <section id="attachmentForm" aria-labelledby="evidenceTitle">
-            <h3 id="evidenceTitle">Kanıt görselleri</h3>
+            <h3 id="evidenceTitle">Kanıt dosyaları</h3>
             <input
               id="attachment"
               class="visually-hidden"
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx"
               multiple
             />
             <button
@@ -152,9 +152,12 @@
               id="evidencePasteZone"
               type="button"
             >
-              <strong>Görsel ekle</strong>
-              <span>Tıklayın, sürükleyin veya Ctrl+V ile yapıştırın</span>
-              <small>PNG, JPEG, WebP veya GIF · en fazla 8 MB</small>
+              <strong>Dosya ekle</strong>
+              <span>Tıklayın, sürükleyin veya görsel yapıştırın</span>
+              <small
+                >Görsel, PDF, CSV, JSON, metin veya Office · en fazla 25
+                MB</small
+              >
             </button>
           </section>
           <div id="attachments"></div>
@@ -343,8 +346,20 @@
           >Detay
           <div id="createEditor" class="rich-editor"></div
         ></label>
-        <div class="paste-zone" id="createEvidencePasteZone" tabindex="0">
-          Kanıt görsellerini buraya bırakın veya Ctrl+V ile yapıştırın.
+        <input
+          id="createAttachment"
+          class="visually-hidden"
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx"
+          multiple
+        />
+        <div
+          class="paste-zone"
+          id="createEvidencePasteZone"
+          role="button"
+          tabindex="0"
+        >
+          Kanıt dosyalarını seçin, buraya bırakın veya görsel yapıştırın.
         </div>
         <div class="form-actions">
           <button type="button" class="close">Vazgeç</button

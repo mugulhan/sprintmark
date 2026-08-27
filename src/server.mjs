@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { dirname, extname, resolve } from "node:path";
+import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Busboy from "busboy";
 import { WorkItemStore } from "./store.mjs";
@@ -9,6 +9,7 @@ import { newUid } from "./identity.mjs";
 import { gitMeta } from "./git-meta.mjs";
 import { ProjectStore } from "./projects.mjs";
 import { SprintStore } from "./sprints.mjs";
+import { FILE_LIMIT, fileTypeForName } from "./files.mjs";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultWorkspace = resolve(appRoot, "data");
@@ -22,7 +23,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.6.2";
+const VERSION = "0.7.0";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -33,6 +34,14 @@ const types = {
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".csv": "text/csv; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
 function send(res, status, body, headers = {}) {
@@ -70,7 +79,7 @@ function multipartBody(req) {
     try {
       parser = Busboy({
         headers: req.headers,
-        limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 12 },
+        limits: { fileSize: FILE_LIMIT, files: 1, fields: 12 },
       });
     } catch {
       reject(
@@ -97,7 +106,7 @@ function multipartBody(req) {
         if (truncated) {
           failed = true;
           reject(
-            Object.assign(new Error("image must not exceed 8 MB"), {
+            Object.assign(new Error("file must not exceed 25 MB"), {
               statusCode: 413,
             }),
           );
@@ -121,12 +130,12 @@ function multipartBody(req) {
   });
 }
 
-async function imageBody(req) {
+async function attachmentBody(req) {
   if (
     String(req.headers["content-type"] || "").startsWith("multipart/form-data")
   )
     return multipartBody(req);
-  const body = await jsonBody(req, 12 * 1024 * 1024);
+  const body = await jsonBody(req, 35 * 1024 * 1024);
   return {
     fields: body,
     file: {
@@ -152,14 +161,37 @@ function publicProject(project) {
   return safe;
 }
 
-async function streamFile(res, path, statusCode = 200) {
+function contentDisposition(filename, disposition) {
+  const safeName = basename(filename || "download");
+  const asciiName = safeName
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\]/g, "_");
+  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`;
+}
+
+async function streamFile(res, path, statusCode = 200, options = {}) {
   try {
     const info = await stat(path);
-    res.writeHead(statusCode, {
+    const fileType = fileTypeForName(options.filename || path);
+    const headers = {
       "Content-Type":
-        types[extname(path).toLowerCase()] || "application/octet-stream",
+        options.contentType ||
+        types[extname(path).toLowerCase()] ||
+        fileType.type,
       "Content-Length": info.size,
       "X-Content-Type-Options": "nosniff",
+    };
+    if (options.filename) {
+      const disposition =
+        options.download || options.inline === false ? "attachment" : "inline";
+      headers["Content-Disposition"] = contentDisposition(
+        options.filename,
+        disposition,
+      );
+      headers["Cache-Control"] = "no-store";
+    }
+    res.writeHead(statusCode, {
+      ...headers,
     });
     createReadStream(path).pipe(res);
   } catch {
@@ -212,9 +244,9 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
       if (draftAttachmentApi && req.method === "POST") {
         if (!writeAllowed(req))
           return send(res, 403, { error: "origin_not_allowed" });
-        const { fields, file } = await imageBody(req);
+        const { fields, file } = await attachmentBody(req);
         if (!file?.data?.length)
-          return send(res, 400, { error: "image_required" });
+          return send(res, 400, { error: "file_required" });
         const attachment = await draftStore.addAttachment(
           draftAttachmentApi[1],
           file,
@@ -360,6 +392,13 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
           throw error;
         }
       }
+      const fileReferencesApi = path.match(
+        /^\/api\/v1\/work-items\/([0-9a-f-]{36})\/file-references$/i,
+      );
+      if (fileReferencesApi && req.method === "GET") {
+        const items = await store.fileReferences(fileReferencesApi[1]);
+        return send(res, 200, { items, count: items.length });
+      }
       const uidApi = path.match(/^\/api\/v1\/work-items\/([0-9a-f-]{36})$/i);
       if (uidApi && req.method === "PATCH") {
         if (!writeAllowed(req))
@@ -395,9 +434,9 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
       if (attachmentApi && req.method === "POST") {
         if (!writeAllowed(req))
           return send(res, 403, { error: "origin_not_allowed" });
-        const { fields, file } = await imageBody(req);
+        const { fields, file } = await attachmentBody(req);
         if (!file?.data?.length)
-          return send(res, 400, { error: "image_required" });
+          return send(res, 400, { error: "file_required" });
         const result = await store.addAttachment(
           attachmentApi[1],
           file,
@@ -431,8 +470,18 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
       );
       if (attachment) {
         const file = await store.attachmentPath(attachment[1], attachment[2]);
-        return file
-          ? streamFile(res, file)
+        const record = file ? await store.byUid(attachment[1]) : null;
+        const metadata = record?.attachments.find(
+          (entry) => typeof entry !== "string" && entry.name === attachment[2],
+        );
+        const fileType = fileTypeForName(metadata?.original_name || file);
+        return file && metadata
+          ? streamFile(res, file, 200, {
+              filename: metadata.original_name || metadata.name,
+              contentType: fileType.type,
+              inline: fileType.inline,
+              download: url.searchParams.get("download") === "1",
+            })
           : send(res, 404, { error: "not_found" });
       }
       const draftAttachment = path.match(
@@ -443,8 +492,33 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
           draftAttachment[1],
           draftAttachment[2],
         );
-        return file
-          ? streamFile(res, file)
+        const draft = file ? await draftStore.read(draftAttachment[1]) : null;
+        const metadata = draft?.attachments.find(
+          (entry) => entry.name === draftAttachment[2],
+        );
+        const fileType = fileTypeForName(metadata?.original_name || file);
+        return file && metadata
+          ? streamFile(res, file, 200, {
+              filename: metadata.original_name || metadata.name,
+              contentType: fileType.type,
+              inline: fileType.inline,
+              download: url.searchParams.get("download") === "1",
+            })
+          : send(res, 404, { error: "not_found" });
+      }
+      const workspaceFile = path.match(/^\/work-item-files\/([0-9a-f-]{36})$/i);
+      if (workspaceFile && req.method === "GET") {
+        const reference = await store.workspaceReferencePath(
+          workspaceFile[1],
+          url.searchParams.get("path"),
+        );
+        return reference
+          ? streamFile(res, reference.file, 200, {
+              filename: reference.name,
+              contentType: reference.type,
+              inline: reference.inline,
+              download: url.searchParams.get("download") === "1",
+            })
           : send(res, 404, { error: "not_found" });
       }
       const canonical = path.match(

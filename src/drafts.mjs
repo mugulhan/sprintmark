@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { basename, extname, resolve, sep } from "node:path";
 import { newUid, slugify, UUID_PATTERN } from "./identity.mjs";
-import { validateImage } from "./store.mjs";
+import { validateAttachment } from "./files.mjs";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -79,12 +79,12 @@ export class DraftStore {
       throw Object.assign(new Error("attachment limit reached"), {
         statusCode: 409,
       });
-    const allowed = validateImage(file);
+    const validated = validateAttachment(file, placement);
     const directory = this.directory(id);
     const cleanBase = slugify(
       basename(file.name || "clipboard-image", extname(file.name || "")),
     );
-    const name = `${Date.now()}-${newUid().slice(0, 8)}-${cleanBase}${allowed.get(file.type)}`;
+    const name = `${Date.now()}-${newUid().slice(0, 8)}-${cleanBase}${validated.extension}`;
     const path = resolve(directory, name);
     if (!path.startsWith(`${directory}${sep}`))
       throw Object.assign(new Error("unsafe attachment path"), {
@@ -94,7 +94,7 @@ export class DraftStore {
     const attachment = {
       name,
       original_name: file.name || name,
-      type: file.type,
+      type: validated.type,
       size: file.data.length,
       created_at: this.now().toISOString(),
       url: `/draft-attachments/${id}/${name}`,

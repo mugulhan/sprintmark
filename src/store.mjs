@@ -3,6 +3,11 @@ import { basename, extname, resolve, sep } from "node:path";
 import { newUid, slugify, validateRecord } from "./identity.mjs";
 import { assertRecordSet, loadRecords, saveRecord } from "./records.mjs";
 import { generateSummaries } from "./summaries.mjs";
+import {
+  extractWorkspaceReferences,
+  validateAttachment,
+  workspaceReferenceInfo,
+} from "./files.mjs";
 
 const allowedPatchFields = new Set([
   "title",
@@ -155,7 +160,7 @@ export class WorkItemStore {
       throw Object.assign(new Error("work item not found"), {
         statusCode: 404,
       });
-    const allowed = validateImage(file);
+    const validated = validateAttachment(file, placement);
     if (existing.attachments.length >= 20)
       throw Object.assign(new Error("attachment limit reached"), {
         statusCode: 409,
@@ -171,7 +176,7 @@ export class WorkItemStore {
     const cleanBase = slugify(
       basename(file.name || "evidence", extname(file.name || "")),
     );
-    const name = `${Date.now()}-${newUid().slice(0, 8)}-${cleanBase}${allowed.get(file.type)}`;
+    const name = `${Date.now()}-${newUid().slice(0, 8)}-${cleanBase}${validated.extension}`;
     const path = resolve(root, name);
     if (!path.startsWith(`${root}${sep}`))
       throw Object.assign(new Error("unsafe attachment path"), {
@@ -181,7 +186,7 @@ export class WorkItemStore {
     const attachment = {
       name,
       original_name: file.name || name,
-      type: file.type,
+      type: validated.type,
       size: file.data.length,
       created_at: new Date().toISOString(),
       url: `/attachments/${uid}/${name}`,
@@ -256,6 +261,13 @@ export class WorkItemStore {
 
   async attachmentPath(uid, name) {
     if (!/^[0-9a-f-]{36}$/i.test(uid) || basename(name) !== name) return null;
+    const record = await this.byUid(uid);
+    if (
+      !record?.attachments.some(
+        (entry) => typeof entry !== "string" && entry.name === name,
+      )
+    )
+      return null;
     const root = resolve(
       this.workspace,
       "data",
@@ -272,51 +284,42 @@ export class WorkItemStore {
       return null;
     }
   }
+
+  async fileReferences(uid) {
+    const record = await this.byUid(uid);
+    if (!record)
+      throw Object.assign(new Error("work item not found"), {
+        statusCode: 404,
+      });
+    const references = [];
+    for (const reference of extractWorkspaceReferences(record)) {
+      const info = await workspaceReferenceInfo(this.workspace, reference);
+      if (!info) continue;
+      const query = `path=${encodeURIComponent(info.path)}`;
+      references.push({
+        path: info.path,
+        name: info.name,
+        type: info.type,
+        size: info.size,
+        exists: info.exists,
+        inline: info.inline,
+        url: info.exists ? `/work-item-files/${uid}?${query}` : null,
+        download_url: info.exists
+          ? `/work-item-files/${uid}?${query}&download=1`
+          : null,
+      });
+    }
+    return references;
+  }
+
+  async workspaceReferencePath(uid, requestedPath) {
+    const record = await this.byUid(uid);
+    if (!record) return null;
+    const authorized = extractWorkspaceReferences(record);
+    const info = await workspaceReferenceInfo(this.workspace, requestedPath);
+    if (!info || !info.exists || !authorized.includes(info.path)) return null;
+    return info;
+  }
 }
 
-export function sniffImageType(data) {
-  if (!Buffer.isBuffer(data)) return null;
-  if (
-    data.length >= 8 &&
-    data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))
-  )
-    return "image/png";
-  if (
-    data.length >= 3 &&
-    data[0] === 0xff &&
-    data[1] === 0xd8 &&
-    data[2] === 0xff
-  )
-    return "image/jpeg";
-  if (
-    data.length >= 6 &&
-    ["GIF87a", "GIF89a"].includes(data.subarray(0, 6).toString("ascii"))
-  )
-    return "image/gif";
-  if (
-    data.length >= 12 &&
-    data.subarray(0, 4).toString("ascii") === "RIFF" &&
-    data.subarray(8, 12).toString("ascii") === "WEBP"
-  )
-    return "image/webp";
-  return null;
-}
-
-export function validateImage(file) {
-  const allowed = new Map([
-    ["image/png", ".png"],
-    ["image/jpeg", ".jpg"],
-    ["image/webp", ".webp"],
-    ["image/gif", ".gif"],
-  ]);
-  if (!file.data?.length || file.data.length > 8 * 1024 * 1024)
-    throw Object.assign(new Error("image must be between 1 byte and 8 MB"), {
-      statusCode: 413,
-    });
-  const detected = sniffImageType(file.data);
-  if (!allowed.has(file.type) || detected !== file.type)
-    throw Object.assign(new Error("unsupported or mismatched image type"), {
-      statusCode: 415,
-    });
-  return allowed;
-}
+export { validateAttachment, validateImage } from "./files.mjs";

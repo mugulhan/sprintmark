@@ -18,7 +18,8 @@ Ardından <http://127.0.0.1:4310> adresini açın. İlk açılışta çalışma 
 - Öncelik rozeti ve filtresi kritik, yüksek, orta ve düşük seviyelerini destekler.
 - İş detayındaki **İş bilgileri** alanından durum, ekip, öncelik, tarih ve saat doğrudan güncellenebilir.
 - **Tamamlandı olarak işaretle** işlemi kesin zamanı sunucuda otomatik kaydeder; detayda tarih/saat ve ne kadar önce tamamlandığı birlikte gösterilir. Yeniden açılan işin tamamlanma zamanı temizlenir.
-- Editöre veya kanıt alanına birden fazla görsel `Ctrl+V` ile yapıştırılabilir.
+- Editöre veya kanıt alanına birden fazla görsel `Ctrl+V` ile yapıştırılabilir. Kanıt alanına ayrıca PDF, CSV, JSON, metin, Markdown, XLSX ve DOCX dosyaları seçilerek ya da sürüklenerek eklenebilir.
+- İş metninde veya `attachments` alanında geçen güvenli `data/` ve `docs/evidence/` referansları, kaynak dosya kopyalanmadan yeni sekmede açılabilir.
 - İş metinleri Markdown, kayıt bilgileri YAML frontmatter olarak veri dizininde saklanır.
 
 Bu sürümde kullanıcı hesabı ve yetkilendirme yoktur. Uygulamayı doğrudan internete açmayın.

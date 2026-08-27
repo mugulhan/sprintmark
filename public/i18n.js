@@ -35,7 +35,12 @@ const english = new Map([
   ["Yeniden aç", "Reopen"],
   ["Kanıt görseli ekle", "Add evidence image"],
   ["Kanıt görselleri", "Evidence images"],
+  ["Kanıt dosyaları", "Evidence files"],
   ["Görsel ekle", "Add image"],
+  ["Dosya ekle", "Add file"],
+  ["Aç", "Open"],
+  ["İndir", "Download"],
+  ["Dosya bulunamadı", "File not found"],
   [
     "Tıklayın, sürükleyin veya Ctrl+V ile yapıştırın",
     "Click, drag or paste with Ctrl+V",

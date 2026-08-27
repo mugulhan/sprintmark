@@ -8,6 +8,7 @@ const state = {
   view: "calendar",
   month: new Date(),
   selected: null,
+  fileReferences: [],
   draggingUid: null,
   suppressCardClick: false,
   expandedDays: new Set(),
@@ -154,6 +155,29 @@ function openLinksInNewTab(root) {
     link.rel = "noopener noreferrer";
   }
 }
+function linkWorkspaceReferences(root) {
+  const references = new Map(
+    state.fileReferences.map((reference) => [reference.path, reference]),
+  );
+  for (const code of root.querySelectorAll("code")) {
+    if (code.closest("pre, a")) continue;
+    const reference = references.get(code.textContent.trim());
+    if (!reference) continue;
+    if (!reference.exists) {
+      code.classList.add("missing-file-reference");
+      code.title = "Dosya bulunamadı";
+      continue;
+    }
+    const link = document.createElement("a");
+    link.href = reference.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "workspace-file-link";
+    link.title = `${reference.name} dosyasını aç`;
+    code.replaceWith(link);
+    link.append(code);
+  }
+}
 function renderWorkItemViewer(markdown) {
   state.detailViewer?.destroy();
   $("detailBody").innerHTML = "";
@@ -164,6 +188,7 @@ function renderWorkItemViewer(markdown) {
     usageStatistics: false,
     customHTMLSanitizer: sanitizeEditorHtml,
   });
+  linkWorkspaceReferences($("detailBody"));
   openLinksInNewTab($("detailBody"));
 }
 function hasUnsavedWorkItem() {
@@ -402,6 +427,12 @@ async function openItem(key, push = true) {
     return;
   }
   const item = await response.json();
+  const referencesResponse = await fetch(
+    `/api/v1/work-items/${item.uid}/file-references`,
+  );
+  state.fileReferences = referencesResponse.ok
+    ? (await referencesResponse.json()).items
+    : [];
   state.detailEditor?.destroy();
   state.detailEditor = null;
   state.editingWorkItem = false;
@@ -443,6 +474,7 @@ async function openItem(key, push = true) {
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
   renderEvidence(item);
+  translateDocument();
   if (push) {
     state.returnPath = `${location.pathname}${location.search}`;
     history.pushState({ key: item.key }, "", canonical(item));
@@ -460,7 +492,7 @@ async function deleteDraft(id) {
   if (!id) return;
   await fetch(`/api/v1/drafts/${id}`, { method: "DELETE" }).catch(() => {});
 }
-async function uploadDraftImage(draftId, file, placement = "evidence") {
+async function uploadDraftFile(draftId, file, placement = "evidence") {
   if (!draftId) throw new Error("Taslak oturumu bulunamadı.");
   const data = new FormData();
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
@@ -471,10 +503,10 @@ async function uploadDraftImage(draftId, file, placement = "evidence") {
     body: data,
   });
   if (!response.ok)
-    throw new Error((await response.json()).error || "Görsel yüklenemedi.");
+    throw new Error((await response.json()).error || "Dosya yüklenemedi.");
   return response.json();
 }
-async function uploadWorkItemImage(file, placement = "evidence") {
+async function uploadWorkItemFile(file, placement = "evidence") {
   if (!state.selected) throw new Error("İş kaydı bulunamadı.");
   const data = new FormData();
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
@@ -485,7 +517,7 @@ async function uploadWorkItemImage(file, placement = "evidence") {
     { method: "POST", body: data },
   );
   if (!response.ok)
-    throw new Error((await response.json()).error || "Görsel yüklenemedi.");
+    throw new Error((await response.json()).error || "Dosya yüklenemedi.");
   const result = await response.json();
   state.selected = result.record;
   state.items = state.items.map((item) =>
@@ -494,22 +526,50 @@ async function uploadWorkItemImage(file, placement = "evidence") {
   return result;
 }
 
+function formatFileSize(size) {
+  if (!Number.isFinite(size)) return "Boyut bilinmiyor";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+function fileExtension(name) {
+  return String(name || "Dosya")
+    .split(".")
+    .pop()
+    .toLocaleUpperCase("tr-TR");
+}
+function renderFileCard(file, { removable = false } = {}) {
+  const name = escapeHtml(
+    file.original_name || file.name || file.path || "Dosya",
+  );
+  const type = String(file.type || "");
+  const image = type.startsWith("image/");
+  if (!file.exists && file.exists !== undefined)
+    return `<article class="file-card missing"><div class="file-symbol" aria-hidden="true">!</div><div class="file-details"><strong title="${name}">${name}</strong><span>Dosya bulunamadı</span></div></article>`;
+  const url = escapeHtml(file.url || "");
+  const downloadUrl = escapeHtml(
+    file.download_url ||
+      `${file.url}${file.url?.includes("?") ? "&" : "?"}download=1`,
+  );
+  const visual = image
+    ? `<button class="evidence-preview" type="button" data-lightbox-url="${url}" data-lightbox-alt="${name}" aria-label="${name} görselini büyüt"><img src="${url}" alt="${name}"></button>`
+    : `<div class="file-symbol" aria-hidden="true">${escapeHtml(fileExtension(file.original_name || file.name))}</div>`;
+  const remove = removable
+    ? `<button class="evidence-remove" type="button" data-attachment-name="${escapeHtml(file.name)}" aria-label="${name} dosyasını kaldır">Kaldır</button>`
+    : "";
+  return `<article class="file-card${image ? " image-file" : ""}">${visual}<div class="file-details"><strong title="${name}">${name}</strong><span>${escapeHtml(fileExtension(file.original_name || file.name))} · ${escapeHtml(formatFileSize(file.size))}</span><div class="file-actions"><a href="${url}" target="_blank" rel="noopener noreferrer">Aç</a><a href="${downloadUrl}" target="_blank" rel="noopener noreferrer">İndir</a>${remove}</div></div></article>`;
+}
 function renderEvidence(item) {
-  $("attachments").innerHTML = item.attachments
+  const managed = item.attachments
     .filter(
       (attachment) =>
-        typeof attachment === "string" || attachment?.placement !== "body",
+        typeof attachment !== "string" && attachment?.placement !== "body",
     )
-    .map((attachment) => {
-      if (typeof attachment === "string") {
-        return `<div class="attachment-reference"><strong>Kan&#305;t dosyas&#305;</strong><code>${escapeHtml(attachment)}</code></div>`;
-      }
-      if (!attachment?.url) return "";
-      const url = escapeHtml(attachment.url);
-      const name = escapeHtml(attachment.original_name || "Gorev gorseli");
-      return `<article class="evidence-card"><button class="evidence-preview" type="button" data-lightbox-url="${url}" data-lightbox-alt="${name}" aria-label="${name} görselini büyüt"><img src="${url}" alt="${name}"></button><div><span title="${name}">${name}</span><button class="evidence-remove" type="button" data-attachment-name="${escapeHtml(attachment.name)}" aria-label="${name} görselini kaldır">Kaldır</button></div></article>`;
-    })
-    .join("");
+    .map((attachment) => renderFileCard(attachment, { removable: true }));
+  const references = state.fileReferences.map((reference) =>
+    renderFileCard(reference),
+  );
+  $("attachments").innerHTML = [...managed, ...references].join("");
   $("attachments").classList.toggle(
     "is-empty",
     !$("attachments").children.length,
@@ -538,7 +598,7 @@ async function startWorkItemEdit() {
     () => {
       state.detailDirty = true;
     },
-    (file, placement) => uploadDraftImage(state.editDraftId, file, placement),
+    (file, placement) => uploadDraftFile(state.editDraftId, file, placement),
   );
 }
 function finishWorkItemEdit(item = state.selected) {
@@ -656,7 +716,7 @@ async function openCreateDialog(context = null) {
         "330px",
         null,
         (file, placement) =>
-          uploadDraftImage(state.createDraftId, file, placement),
+          uploadDraftFile(state.createDraftId, file, placement),
       );
   });
 }
@@ -1110,7 +1170,7 @@ async function uploadSelectedEvidence() {
   const files = [...$("attachment").files];
   if (!files.length) return;
   try {
-    for (const file of files) await uploadWorkItemImage(file, "evidence");
+    for (const file of files) await uploadWorkItemFile(file, "evidence");
   } catch (error) {
     return alert(error.message);
   }
@@ -1119,6 +1179,26 @@ async function uploadSelectedEvidence() {
 }
 $("attachment").addEventListener("change", uploadSelectedEvidence);
 $("evidencePasteZone").addEventListener("click", () => $("attachment").click());
+async function uploadSelectedDraftEvidence() {
+  const files = [...$("createAttachment").files];
+  if (!files.length) return;
+  try {
+    for (const file of files)
+      await uploadDraftFile(state.createDraftId, file, "evidence");
+  } catch (error) {
+    return alert(error.message);
+  }
+  $("createAttachment").value = "";
+}
+$("createAttachment").addEventListener("change", uploadSelectedDraftEvidence);
+$("createEvidencePasteZone").addEventListener("click", () =>
+  $("createAttachment").click(),
+);
+$("createEvidencePasteZone").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  $("createAttachment").click();
+});
 $("attachments").addEventListener("click", async (event) => {
   const preview = event.target.closest("[data-lightbox-url]");
   if (preview) {
@@ -1130,7 +1210,7 @@ $("attachments").addEventListener("click", async (event) => {
   }
   const remove = event.target.closest("[data-attachment-name]");
   if (!remove || !state.selected) return;
-  if (!globalThis.confirm("Bu kanıt görseli kaldırılsın mı?")) return;
+  if (!globalThis.confirm("Bu kanıt dosyası kaldırılsın mı?")) return;
   remove.disabled = true;
   const response = await fetch(
     `/api/v1/work-items/${state.selected.uid}/attachments/${encodeURIComponent(remove.dataset.attachmentName)}`,
@@ -1141,7 +1221,7 @@ $("attachments").addEventListener("click", async (event) => {
   );
   if (!response.ok) {
     remove.disabled = false;
-    return alert((await response.json()).error || "Görsel kaldırılamadı.");
+    return alert((await response.json()).error || "Dosya kaldırılamadı.");
   }
   await openItem(state.selected.key, false);
 });
@@ -1170,11 +1250,11 @@ async function pasteEvidence(event, uploader) {
   }
 }
 $("evidencePasteZone").addEventListener("paste", (event) =>
-  pasteEvidence(event, uploadWorkItemImage),
+  pasteEvidence(event, uploadWorkItemFile),
 );
 $("createEvidencePasteZone").addEventListener("paste", (event) =>
   pasteEvidence(event, (file, placement) =>
-    uploadDraftImage(state.createDraftId, file, placement),
+    uploadDraftFile(state.createDraftId, file, placement),
   ),
 );
 for (const id of [
@@ -1187,12 +1267,12 @@ for (const id of [
   $(id).addEventListener("change", () => {
     if (state.editingWorkItem) state.detailDirty = true;
   });
-function enableImageDrop(id, uploader) {
+function enableFileDrop(id, uploader) {
   const zone = $(id);
   zone.addEventListener("dragover", (event) => {
     if (
-      ![...(event.dataTransfer?.items || [])].some((item) =>
-        item.type.startsWith("image/"),
+      ![...(event.dataTransfer?.items || [])].some(
+        (item) => item.kind === "file",
       )
     )
       return;
@@ -1203,9 +1283,7 @@ function enableImageDrop(id, uploader) {
     zone.classList.remove("drop-target"),
   );
   zone.addEventListener("drop", async (event) => {
-    const files = [...(event.dataTransfer?.files || [])].filter((file) =>
-      file.type.startsWith("image/"),
-    );
+    const files = [...(event.dataTransfer?.files || [])];
     if (!files.length) return;
     event.preventDefault();
     zone.classList.remove("drop-target");
@@ -1217,9 +1295,9 @@ function enableImageDrop(id, uploader) {
     }
   });
 }
-enableImageDrop("evidencePasteZone", uploadWorkItemImage);
-enableImageDrop("createEvidencePasteZone", (file, placement) =>
-  uploadDraftImage(state.createDraftId, file, placement),
+enableFileDrop("evidencePasteZone", uploadWorkItemFile);
+enableFileDrop("createEvidencePasteZone", (file, placement) =>
+  uploadDraftFile(state.createDraftId, file, placement),
 );
 load().catch((error) => {
   document.querySelector("main").innerHTML =

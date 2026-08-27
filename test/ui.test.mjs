@@ -52,7 +52,10 @@ test("task viewer links always open in a separate safe tab", async () => {
 test("calendar overflow buttons expand and collapse every item in a day", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /expandedDays: new Set\(\)/);
-  assert.match(app, /const visibleItems = expanded \? dayItems : dayItems\.slice\(0, 4\)/);
+  assert.match(
+    app,
+    /const visibleItems = expanded \? dayItems : dayItems\.slice\(0, 4\)/,
+  );
   assert.match(app, /aria-expanded="\$\{expanded\}"/);
   assert.match(app, /e\.target\.closest\("\.more\[data-day\]"\)/);
   assert.match(app, /state\.expandedDays\.add\(day\)/);
@@ -74,4 +77,26 @@ test("the rich viewer replaces the legacy Markdown renderer so tables can render
   assert.match(app, /patchSelectedWorkItem/);
   assert.match(app, /`v\$\{meta\.version\}`/);
   assert.doesNotMatch(app, /çalışma ağacı kirli/);
+});
+
+test("task evidence supports files, downloads and legacy workspace references", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /Kanıt dosyaları/);
+  assert.match(html, /id="createAttachment"/);
+  assert.match(html, /accept="[^"]*\.pdf[^"]*\.csv[^"]*\.xlsx[^"]*\.docx/);
+  assert.match(app, /fileReferences: \[\]/);
+  assert.match(app, /\/file-references/);
+  assert.match(app, /function linkWorkspaceReferences\(root\)/);
+  assert.match(app, /className = "workspace-file-link"/);
+  assert.match(app, /function renderFileCard/);
+  assert.match(app, /download=1/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(app, /function enableFileDrop/);
+  assert.doesNotMatch(app, /function enableImageDrop/);
+  assert.match(styles, /\.file-card/);
+  assert.match(styles, /\.missing-file-reference/);
 });

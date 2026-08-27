@@ -7,7 +7,7 @@
 Sprintmark is a local-first, file-backed project and sprint tracker. It combines a calendar, backlog, project dashboards, drag-and-drop scheduling, Markdown-rich work items, priorities, evidence galleries, and clipboard image uploads without requiring a database or cloud account.
 
 > [!WARNING]
-> Sprintmark 0.6.2 is a single-user application with no authentication. Bind it to `127.0.0.1` or place it behind your own authenticated reverse proxy. Do not expose it directly to the public internet.
+> Sprintmark 0.7.0 is a single-user application with no authentication. Bind it to `127.0.0.1` or place it behind your own authenticated reverse proxy. Do not expose it directly to the public internet.
 
 ## Requirements
 
@@ -53,7 +53,7 @@ npm run format:check
 npm test
 ```
 
-Work item bodies remain Markdown. Images can be pasted into the editor or the evidence area; uploads are signature-validated PNG, JPEG, WebP or GIF files with an 8 MB per-file and 20-image per-item limit.
+Work item bodies remain Markdown. Body images keep an 8 MB limit. Evidence accepts signature- and type-validated PNG, JPEG, WebP, GIF, PDF, CSV, JSON, text, Markdown, XLSX and DOCX files up to 25 MB each, with a 20-file per-item limit. Safe `data/` and `docs/evidence/` paths referenced by a work item can be opened without copying them into managed storage.
 
 Status, priority and schedule metadata can be changed directly from the work-item panel. Completion and reopening are explicit actions: the server records the completion instant automatically, and the UI shows both the exact timestamp and its relative age.
 

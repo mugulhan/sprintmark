@@ -698,24 +698,31 @@ dd {
 }
 #attachments {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin-top: 10px;
 }
 #attachments.is-empty {
   display: none;
 }
-.evidence-card {
+.file-card {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: stretch;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
 }
+.file-card.missing {
+  border-color: #e7b6b6;
+  background: #fff8f8;
+}
 .evidence-preview {
   display: block;
   width: 100%;
-  height: 90px;
+  height: 72px;
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -728,22 +735,57 @@ dd {
   height: 100%;
   object-fit: cover;
 }
-.evidence-card > div {
+.file-symbol {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  padding: 6px;
+  background: #eaf2fb;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.file-card.missing .file-symbol {
+  background: #fbe6e6;
+  color: #9a2929;
+  font-size: 20px;
+}
+.file-details {
   display: grid;
   gap: 5px;
   padding: 7px;
 }
-.evidence-card span {
+.file-details strong,
+.file-details > span {
   overflow: hidden;
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.file-details > span {
+  color: var(--muted);
+}
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.file-actions a,
 .evidence-remove {
   padding: 4px 6px;
+  border: 1px solid #a9bfd9;
+  border-radius: 5px;
+  color: var(--navy);
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+.evidence-remove {
   border-color: #e2a9a9;
   color: #9a2929;
-  font-size: 10px;
 }
 .attachment-reference {
   display: grid;
@@ -756,6 +798,15 @@ dd {
 }
 .attachment-reference code {
   overflow-wrap: anywhere;
+}
+.workspace-file-link code {
+  color: #075da8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.missing-file-reference {
+  color: #9a2929;
+  text-decoration: line-through;
 }
 .image-lightbox {
   width: min(94vw, 1400px);

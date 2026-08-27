@@ -47,3 +47,26 @@ test("draft attachments reject MIME and signature mismatches", async () => {
     (error) => error.statusCode === 415,
   );
 });
+
+test("draft evidence documents are promoted without Markdown image rewriting", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-draft-file-"));
+  const store = new DraftStore(workspace);
+  const draft = await store.create();
+  const attachment = await store.addAttachment(draft.id, {
+    name: "results.csv",
+    type: "text/csv",
+    data: Buffer.from("old,new\n/a,/b\n"),
+  });
+  const uid = "22222222-2222-4222-8222-222222222222";
+  const promotion = await store.preparePromotion(draft.id, uid, "Task body");
+  assert.equal(promotion.body, "Task body");
+  assert.equal(promotion.attachments[0].placement, "evidence");
+  assert.equal(promotion.attachments[0].original_name, "results.csv");
+  assert.match(
+    promotion.attachments[0].url,
+    new RegExp(`/attachments/${uid}/`),
+  );
+  assert.equal(attachment.type, "text/csv");
+  await stat(promotion.copied[0]);
+  await store.rollback(promotion);
+});
