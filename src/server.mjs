@@ -660,6 +660,8 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
           });
         return streamFile(res, resolve(publicRoot, "index.html"));
       }
+      if (path === "/calendar" || path === "/backlog")
+        return streamFile(res, resolve(publicRoot, "index.html"));
       const toastUiFiles = new Map([
         ["/vendor/toastui-editor.css", "toastui-editor.css"],
       ]);
@@ -669,7 +671,22 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
         return streamFile(res, resolve(toastUiRoot, toastUiFiles.get(path)));
       if (path === "/vendor/dompurify.js")
         return streamFile(res, resolve(domPurifyRoot, "purify.js"));
-      if (path === "/" || path === "/index.html")
+      if (path === "/") {
+        const projects = await projectStore.all();
+        const project =
+          projects.find((candidate) => candidate.status === "active") ||
+          projects[0];
+        return project
+          ? send(res, 302, "", {
+              Location: `/projects/${project.key}/${project.slug}`,
+              "Content-Type": "text/plain",
+            })
+          : send(res, 302, "", {
+              Location: "/projects",
+              "Content-Type": "text/plain",
+            });
+      }
+      if (path === "/index.html")
         return streamFile(res, resolve(publicRoot, "index.html"));
       const candidate = resolve(publicRoot, `.${path}`);
       if (candidate.startsWith(publicRoot)) return streamFile(res, candidate);

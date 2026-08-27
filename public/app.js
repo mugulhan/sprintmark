@@ -2,7 +2,9 @@ import { locale, t, translateDocument } from "./i18n.js";
 
 const initialView = location.pathname.startsWith("/projects")
   ? "projects"
-  : "calendar";
+  : location.pathname.startsWith("/backlog")
+    ? "backlog"
+    : "calendar";
 const state = {
   projects: [],
   selectedProject: null,
@@ -107,6 +109,13 @@ const workItemStatuses = (item) =>
 const canonical = (item) => `/work-items/${item.key}/${item.slug}`;
 const projectCanonical = (project) =>
   `/projects/${project.key}/${project.slug}`;
+const viewCanonical = (view, project = currentProject()) => {
+  if (view === "projects" && project) return projectCanonical(project);
+  const projectQuery = project
+    ? `?project=${encodeURIComponent(project.key)}`
+    : "";
+  return `/${view === "backlog" ? "backlog" : "calendar"}${projectQuery}`;
+};
 const currentProject = () =>
   state.projects.find((project) => project.key === state.selectedProject);
 const projectSprints = () =>
@@ -645,10 +654,7 @@ function setView(view, updateAddress = true) {
     );
   if (updateAddress) {
     const project = currentProject();
-    const target =
-      view === "projects" && project
-        ? projectCanonical(project)
-        : `/?project=${encodeURIComponent(state.selectedProject)}`;
+    const target = viewCanonical(view, project);
     history.pushState({ view }, "", target);
   }
   render();
@@ -1227,13 +1233,7 @@ function selectProject(key, updateAddress = true) {
   if (dates.length) state.month = new Date(`${dates.at(-1)}T12:00:00`);
   if (updateAddress) {
     const project = currentProject();
-    history.replaceState(
-      {},
-      "",
-      state.view === "projects" && project
-        ? projectCanonical(project)
-        : `/?project=${encodeURIComponent(key)}`,
-    );
+    history.replaceState({}, "", viewCanonical(state.view, project));
   }
   render();
 }

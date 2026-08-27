@@ -20,6 +20,8 @@
     <script>
       if (location.pathname.startsWith("/projects"))
         document.body.dataset.view = "projects";
+      else if (location.pathname.startsWith("/backlog"))
+        document.body.dataset.view = "backlog";
     </script>
     <header>
       <div class="header-row">

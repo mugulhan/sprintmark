@@ -152,7 +152,10 @@ test("direct project routes avoid rendering the calendar before project data", a
   ]);
   assert.match(html, /<body class="app-loading" data-view="calendar">/);
   assert.match(html, /location\.pathname\.startsWith\("\/projects"\)/);
+  assert.match(html, /location\.pathname\.startsWith\("\/backlog"\)/);
   assert.match(app, /const initialView = location\.pathname\.startsWith/);
+  assert.match(app, /const viewCanonical/);
+  assert.match(app, /view === "backlog" \? "backlog" : "calendar"/);
   assert.match(app, /function applyViewShell\(view\)/);
   assert.match(app, /view: initialView/);
   assert.match(app, /document\.body\.classList\.remove\("app-loading"\)/);
