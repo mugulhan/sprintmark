@@ -8,6 +8,8 @@ const initialView = location.pathname.startsWith("/projects")
 const state = {
   projects: [],
   selectedProject: null,
+  projectIndex:
+    location.pathname === "/projects" || location.pathname === "/projects/",
   projectSection: "overview",
   projectDocuments: [],
   activeProjectDocument: null,
@@ -110,7 +112,10 @@ const canonical = (item) => `/work-items/${item.key}/${item.slug}`;
 const projectCanonical = (project) =>
   `/projects/${project.key}/${project.slug}`;
 const viewCanonical = (view, project = currentProject()) => {
-  if (view === "projects" && project) return projectCanonical(project);
+  if (view === "projects")
+    return state.projectIndex || !project
+      ? "/projects/"
+      : projectCanonical(project);
   const projectQuery = project
     ? `?project=${encodeURIComponent(project.key)}`
     : "";
@@ -364,7 +369,7 @@ function renderProjectList() {
       const items = state.items.filter(
         (item) => item.project_key === project.key,
       );
-      return `<button class="project-list-card${project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${project.status === "active" ? "Aktif" : "Arşiv"}</span><small>${items.filter((item) => item.kind === "task").length} iş · ${items.filter((item) => item.kind === "backlog").length} backlog</small></button>`;
+      return `<button class="project-list-card${!state.projectIndex && project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${project.status === "active" ? "Aktif" : "Arşiv"}</span><small>${items.filter((item) => item.kind === "task").length} iş · ${items.filter((item) => item.kind === "backlog").length} backlog</small></button>`;
     })
     .join("");
 }
@@ -623,6 +628,9 @@ function renderProjectDashboard() {
 }
 function renderProjects() {
   renderProjectList();
+  $("projectsView").classList.toggle("project-index", state.projectIndex);
+  $("projectDashboard").hidden = state.projectIndex;
+  if (state.projectIndex) return;
   renderProjectDashboard();
 }
 function render() {
@@ -1018,6 +1026,14 @@ async function load() {
   if (route) openItem(route[1], false);
 }
 document.addEventListener("click", async (e) => {
+  const projectRoot = e.target.closest("[data-project-root]");
+  if (projectRoot) {
+    state.projectIndex = true;
+    state.view = "projects";
+    history.pushState({ view: "projects" }, "", "/projects/");
+    render();
+    return;
+  }
   const projectTab = e.target.closest("[data-project-tab]");
   if (projectTab) {
     await setProjectSection(projectTab.dataset.projectTab);
@@ -1119,6 +1135,7 @@ document.addEventListener("click", async (e) => {
   }
   const projectCard = e.target.closest("[data-project-key]");
   if (projectCard) {
+    state.projectIndex = false;
     selectProject(projectCard.dataset.projectKey, false);
     setView("projects");
   }
@@ -1221,6 +1238,7 @@ for (const id of ["statusFilter", "teamFilter", "priorityFilter", "search"])
   $(id).addEventListener(id === "search" ? "input" : "change", render);
 function selectProject(key, updateAddress = true) {
   if (!state.projects.some((project) => project.key === key)) return;
+  if (state.view === "projects") state.projectIndex = false;
   state.selectedProject = key;
   state.projectSection = "overview";
   state.projectDocuments = [];

@@ -1084,6 +1084,15 @@ dd {
   gap: 16px;
   align-items: start;
 }
+.project-index .projects-layout {
+  grid-template-columns: 1fr;
+}
+.project-index .project-list-panel {
+  position: static;
+}
+.project-index .project-list {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
 .project-list-panel,
 .project-dashboard > section {
   border: 1px solid var(--line);
@@ -1153,6 +1162,9 @@ dd {
 .project-dashboard {
   display: grid;
   gap: 14px;
+}
+.project-dashboard[hidden] {
+  display: none;
 }
 .project-dashboard > section {
   padding: 20px;

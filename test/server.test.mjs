@@ -211,6 +211,7 @@ test("project detail API and canonical routes enforce immutable identity and ETa
   const home = await fetch(`${base}/`, { redirect: "manual" });
   assert.equal(home.status, 302);
   assert.equal(home.headers.get("location"), "/projects/PRJ-001/demo-platform");
+  assert.equal((await fetch(`${base}/projects/`)).status, 200);
   assert.equal((await fetch(`${base}/calendar`)).status, 200);
   assert.equal((await fetch(`${base}/backlog`)).status, 200);
   const immutable = await fetch(`${base}/api/v1/projects/${project.uid}`, {

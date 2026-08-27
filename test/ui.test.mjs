@@ -163,6 +163,28 @@ test("direct project routes avoid rendering the calendar before project data", a
   assert.match(styles, /@keyframes loading-sheen/);
 });
 
+test("the projects root is distinct from a selected project detail", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /data-project-root/);
+  assert.match(app, /projectIndex:/);
+  assert.match(
+    app,
+    /history\.pushState\(\{ view: "projects" \}, "", "\/projects\/"\)/,
+  );
+  assert.match(app, /\$\("projectDashboard"\)\.hidden = state\.projectIndex/);
+  assert.match(
+    app,
+    /!state\.projectIndex && project\.key === state\.selectedProject/,
+  );
+  assert.match(styles, /\.project-index \.projects-layout/);
+  assert.match(styles, /\.project-index \.project-list/);
+  assert.match(styles, /\.project-dashboard\[hidden\]/);
+});
+
 test("the saved locale is applied before the first visible header paint", async () => {
   const [html, app, styles] = await Promise.all([
     readFile(resolve(publicRoot, "index.html"), "utf8"),
