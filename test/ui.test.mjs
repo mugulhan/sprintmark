@@ -49,6 +49,24 @@ test("task viewer links always open in a separate safe tab", async () => {
   assert.match(app, /openLinksInNewTab\(\$\("detailBody"\)\)/);
 });
 
+test("browser title follows the open work item and returns to the project", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /function updateDocumentTitle\(item = null\)/);
+  assert.match(
+    app,
+    /document\.title = `\$\{item\.title\} · \$\{item\.key\} · Sprintmark`/,
+  );
+  assert.match(app, /updateDocumentTitle\(item\)/);
+  assert.match(
+    app,
+    /updateDocumentTitle\(\$\("detail"\)\.open \? state\.selected : null\)/,
+  );
+  assert.match(
+    app,
+    /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\);\s+updateDocumentTitle\(\)/,
+  );
+});
+
 test("calendar overflow buttons expand and collapse every item in a day", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /expandedDays: new Set\(\)/);

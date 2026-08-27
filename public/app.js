@@ -90,6 +90,13 @@ const projectSprints = () =>
   state.sprints.filter(
     (sprint) => sprint.project_key === state.selectedProject,
   );
+function updateDocumentTitle(item = null) {
+  if (item) {
+    document.title = `${item.title} · ${item.key} · Sprintmark`;
+    return;
+  }
+  document.title = `${currentProject()?.name || t("Projeler")} · Sprintmark`;
+}
 function renderProjectOptions() {
   $("projectSelect").innerHTML = state.projects
     .filter(
@@ -400,7 +407,7 @@ function render() {
   $("newItem").disabled = activeProject?.status !== "active";
   $("sprintButton").disabled = activeProject?.status !== "active";
   document.body.dataset.view = state.view;
-  document.title = `${activeProject?.name || t("Projeler")} · Sprintmark`;
+  updateDocumentTitle($("detail").open ? state.selected : null);
   translateDocument();
 }
 function setView(view, updateAddress = true) {
@@ -480,6 +487,7 @@ async function openItem(key, push = true) {
     history.pushState({ key: item.key }, "", canonical(item));
   }
   if (!$("detail").open) $("detail").showModal();
+  updateDocumentTitle(item);
   window.requestAnimationFrame(() => renderWorkItemViewer(item.body));
 }
 async function createDraft() {
@@ -1115,6 +1123,7 @@ $("detail").addEventListener("close", () => {
   state.detailDirty = false;
   if (location.pathname.startsWith("/work-items/"))
     history.pushState({}, "", state.returnPath || "/");
+  updateDocumentTitle();
 });
 $("createDialog").addEventListener("cancel", (event) => {
   if (
