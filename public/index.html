@@ -215,6 +215,39 @@
       <p id="lightboxCaption"></p>
     </dialog>
 
+    <dialog id="documentPreviewDialog" class="document-preview-dialog">
+      <div class="document-preview-shell">
+        <header class="document-preview-head">
+          <div>
+            <span id="documentPreviewProject" class="eyebrow"></span>
+            <h2 id="documentPreviewTitle">Doküman</h2>
+          </div>
+          <div class="document-preview-actions">
+            <a
+              id="documentPreviewOpen"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Yeni sekmede aç</a
+            >
+            <a
+              id="documentPreviewDownload"
+              target="_blank"
+              rel="noopener noreferrer"
+              >İndir</a
+            >
+            <button type="button" class="close" aria-label="Kapat">×</button>
+          </div>
+        </header>
+        <div class="document-reader">
+          <aside id="documentOutline" class="document-outline"></aside>
+          <article
+            id="documentPreviewBody"
+            class="document-page markdown"
+          ></article>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="projectEditDialog" class="create-dialog">
       <form id="projectEditForm">
         <div class="dialog-head">

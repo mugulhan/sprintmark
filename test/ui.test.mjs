@@ -118,3 +118,28 @@ test("task evidence supports files, downloads and legacy workspace references", 
   assert.match(styles, /\.file-card/);
   assert.match(styles, /\.missing-file-reference/);
 });
+
+test("project documents render as heading-based documentation pages", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="documentPreviewDialog"/);
+  assert.match(html, /id="documentOutline"/);
+  assert.match(html, /id="documentPreviewBody"/);
+  assert.match(app, /data-project-tab="documents"/);
+  assert.match(app, /function splitMarkdownSections\(markdown\)/);
+  assert.match(app, /const heading = line\.match/);
+  assert.match(app, /headings\.push/);
+  assert.match(app, /data-document-section/);
+  assert.match(app, /function renderDocumentSection\(index\)/);
+  assert.match(app, /\/document-references/);
+  assert.match(app, /projectDocumentUpload/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(styles, /\.project-tabs/);
+  assert.match(styles, /\.document-reader/);
+  assert.match(styles, /\.document-outline \.outline-level-3/);
+  assert.match(styles, /\.document-outline \.outline-level-4/);
+  assert.match(styles, /\.document-page/);
+});

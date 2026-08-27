@@ -173,7 +173,7 @@ export function fileTypeForName(name) {
   );
 }
 
-export function normalizeWorkspaceReference(value) {
+function normalizeRelativeReference(value) {
   const normalized = String(value || "")
     .trim()
     .replaceAll("\\", "/");
@@ -186,11 +186,26 @@ export function normalizeWorkspaceReference(value) {
     return null;
   const parts = normalized.split("/");
   if (parts.some((part) => !part || part === "." || part === "..")) return null;
+  return parts.join("/");
+}
+
+export function normalizeWorkspaceReference(value) {
+  const normalized = normalizeRelativeReference(value);
+  if (!normalized) return null;
   if (!(
     normalized.startsWith("data/") || normalized.startsWith("docs/evidence/")
   ))
     return null;
-  return parts.join("/");
+  return normalized;
+}
+
+export function normalizeProjectDocumentReference(value) {
+  const normalized = normalizeRelativeReference(value);
+  if (!normalized) return null;
+  const parts = normalized.split("/");
+  if (parts.some((part) => part.startsWith("."))) return null;
+  if (!fileTypes.has(extname(normalized).toLowerCase())) return null;
+  return normalized;
 }
 
 export function extractWorkspaceReferences(record) {
@@ -204,8 +219,8 @@ export function extractWorkspaceReferences(record) {
   ];
 }
 
-export async function workspaceReferenceInfo(workspace, value) {
-  const reference = normalizeWorkspaceReference(value);
+async function referenceInfo(workspace, value, normalizer) {
+  const reference = normalizer(value);
   if (!reference) return null;
   const workspaceRoot = resolve(workspace);
   const candidate = resolve(workspaceRoot, ...reference.split("/"));
@@ -253,4 +268,12 @@ export async function workspaceReferenceInfo(workspace, value) {
       file: null,
     };
   }
+}
+
+export async function workspaceReferenceInfo(workspace, value) {
+  return referenceInfo(workspace, value, normalizeWorkspaceReference);
+}
+
+export async function projectDocumentReferenceInfo(workspace, value) {
+  return referenceInfo(workspace, value, normalizeProjectDocumentReference);
 }

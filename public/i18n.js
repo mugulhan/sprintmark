@@ -79,6 +79,17 @@ const english = new Map([
   ["Tamamlandı", "Done"],
   ["Açık", "Open"],
   ["Beklemede", "Waiting"],
+  ["Genel Bakış", "Overview"],
+  ["Dokümanlar", "Documents"],
+  ["Proje dokümanları", "Project documents"],
+  ["Dosya yükle", "Upload file"],
+  ["Çalışma alanındaki dosyayı bağla", "Link a workspace file"],
+  ["Bağla", "Link"],
+  ["Önizle", "Preview"],
+  ["Yeni sekmede aç", "Open in new tab"],
+  ["İçindekiler", "Contents"],
+  ["Doküman hazırlanıyor…", "Preparing document…"],
+  ["Henüz doküman eklenmedi.", "No documents have been added yet."],
 ]);
 
 export function locale() {

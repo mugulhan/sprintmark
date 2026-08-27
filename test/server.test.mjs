@@ -422,3 +422,80 @@ test("workspace file references are discoverable, task-scoped and safe", async (
     404,
   );
 });
+
+test("project documents can link, preview, upload, download and remove safely", async (context) => {
+  const { server, workspace, base } = await fixture();
+  context.after(() => server.close());
+  await writeFile(
+    join(workspace, "YENIWEB_MIMARISI.md"),
+    "# Yeniweb Mimarisi\n\n## Yayın modeli\n",
+    "utf8",
+  );
+  const projectResponse = await fetch(`${base}/api/v1/projects/PRJ-001`);
+  const project = await projectResponse.json();
+  const linkedResponse = await fetch(
+    `${base}/api/v1/projects/${project.uid}/document-references`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "if-match": projectResponse.headers.get("etag"),
+      },
+      body: JSON.stringify({ path: "YENIWEB_MIMARISI.md" }),
+    },
+  );
+  assert.equal(linkedResponse.status, 201);
+  const linked = await linkedResponse.json();
+  const documentsResponse = await fetch(
+    `${base}/api/v1/projects/${project.uid}/documents`,
+  );
+  const documents = await documentsResponse.json();
+  assert.equal(documents.count, 1);
+  assert.equal(documents.items[0].path, "YENIWEB_MIMARISI.md");
+  const preview = await fetch(`${base}${documents.items[0].url}`);
+  assert.equal(preview.status, 200);
+  assert.match(preview.headers.get("content-type"), /^text\/markdown/);
+  assert.match(preview.headers.get("content-disposition"), /^inline;/);
+  assert.match(await preview.text(), /Yayın modeli/);
+  const unsafe = await fetch(
+    `${base}/project-files/${project.uid}?path=${encodeURIComponent("../secret.md")}`,
+  );
+  assert.equal(unsafe.status, 404);
+
+  const form = new globalThis.FormData();
+  form.append(
+    "file",
+    new globalThis.Blob(['{"status":"ok"}\n'], {
+      type: "application/json",
+    }),
+    "architecture.json",
+  );
+  const upload = await fetch(
+    `${base}/api/v1/projects/${project.uid}/documents`,
+    {
+      method: "POST",
+      headers: { "if-match": linked._etag },
+      body: form,
+    },
+  );
+  assert.equal(upload.status, 201);
+  const uploaded = await upload.json();
+  const afterUpload = await fetch(
+    `${base}/api/v1/projects/${project.uid}/documents`,
+  ).then((response) => response.json());
+  assert.equal(afterUpload.count, 2);
+  const uploadedDocument = afterUpload.items[1];
+  const download = await fetch(`${base}${uploadedDocument.download_url}`);
+  assert.match(download.headers.get("content-disposition"), /^attachment;/);
+  assert.equal(download.headers.get("x-content-type-options"), "nosniff");
+  const remove = await fetch(
+    `${base}/api/v1/projects/${project.uid}/documents/1`,
+    {
+      method: "DELETE",
+      headers: { "if-match": uploaded.project._etag },
+    },
+  );
+  assert.equal(remove.status, 200);
+  assert.equal((await remove.json()).documents.length, 1);
+  assert.equal((await fetch(`${base}${uploadedDocument.url}`)).status, 404);
+});

@@ -23,7 +23,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.7.1";
+const VERSION = "0.8.0";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -297,6 +297,58 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
           ETag: project._etag,
         });
       }
+      const projectDocumentsApi = path.match(
+        /^\/api\/v1\/projects\/([0-9a-f-]{36})\/documents$/i,
+      );
+      if (projectDocumentsApi && req.method === "GET") {
+        const items = await projectStore.documents(projectDocumentsApi[1]);
+        return send(res, 200, { items, count: items.length });
+      }
+      if (projectDocumentsApi && req.method === "POST") {
+        if (!writeAllowed(req))
+          return send(res, 403, { error: "origin_not_allowed" });
+        const { file } = await attachmentBody(req);
+        if (!file?.data?.length)
+          return send(res, 400, { error: "file_required" });
+        const result = await projectStore.addDocument(
+          projectDocumentsApi[1],
+          file,
+          req.headers["if-match"],
+        );
+        return send(
+          res,
+          201,
+          { document: result.document, project: publicProject(result.project) },
+          { ETag: result.project._etag },
+        );
+      }
+      const projectDocumentReferenceApi = path.match(
+        /^\/api\/v1\/projects\/([0-9a-f-]{36})\/document-references$/i,
+      );
+      if (projectDocumentReferenceApi && req.method === "POST") {
+        if (!writeAllowed(req))
+          return send(res, 403, { error: "origin_not_allowed" });
+        const input = await jsonBody(req);
+        const project = await projectStore.addDocumentReference(
+          projectDocumentReferenceApi[1],
+          input.path,
+          req.headers["if-match"],
+        );
+        return send(res, 201, publicProject(project), { ETag: project._etag });
+      }
+      const projectDocumentDeleteApi = path.match(
+        /^\/api\/v1\/projects\/([0-9a-f-]{36})\/documents\/(\d+)$/i,
+      );
+      if (projectDocumentDeleteApi && req.method === "DELETE") {
+        if (!writeAllowed(req))
+          return send(res, 403, { error: "origin_not_allowed" });
+        const project = await projectStore.removeDocument(
+          projectDocumentDeleteApi[1],
+          projectDocumentDeleteApi[2],
+          req.headers["if-match"],
+        );
+        return send(res, 200, publicProject(project), { ETag: project._etag });
+      }
       if (path === "/api/v1/sprints" && req.method === "GET") {
         let sprints = await sprintStore.all();
         if (url.searchParams.get("project_key"))
@@ -510,6 +562,47 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
       if (workspaceFile && req.method === "GET") {
         const reference = await store.workspaceReferencePath(
           workspaceFile[1],
+          url.searchParams.get("path"),
+        );
+        return reference
+          ? streamFile(res, reference.file, 200, {
+              filename: reference.name,
+              contentType: reference.type,
+              inline: reference.inline,
+              download: url.searchParams.get("download") === "1",
+            })
+          : send(res, 404, { error: "not_found" });
+      }
+      const projectDocument = path.match(
+        /^\/project-documents\/([0-9a-f-]{36})\/([^/]+)$/i,
+      );
+      if (projectDocument && req.method === "GET") {
+        const file = await projectStore.managedDocumentPath(
+          projectDocument[1],
+          projectDocument[2],
+        );
+        const project = file
+          ? await projectStore.byUid(projectDocument[1])
+          : null;
+        const metadata = project?.documents.find(
+          (document) =>
+            typeof document !== "string" &&
+            document.name === projectDocument[2],
+        );
+        const fileType = fileTypeForName(metadata?.original_name || file);
+        return file && metadata
+          ? streamFile(res, file, 200, {
+              filename: metadata.original_name || metadata.name,
+              contentType: fileType.type,
+              inline: fileType.inline,
+              download: url.searchParams.get("download") === "1",
+            })
+          : send(res, 404, { error: "not_found" });
+      }
+      const projectFile = path.match(/^\/project-files\/([0-9a-f-]{36})$/i);
+      if (projectFile && req.method === "GET") {
+        const reference = await projectStore.workspaceDocumentPath(
+          projectFile[1],
           url.searchParams.get("path"),
         );
         return reference
