@@ -11,6 +11,9 @@
 * {
   box-sizing: border-box;
 }
+html:not(.i18n-ready) header {
+  visibility: hidden;
+}
 body {
   margin: 0;
   background: var(--bg);

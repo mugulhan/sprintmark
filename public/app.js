@@ -46,6 +46,8 @@ function applyViewShell(view) {
     );
 }
 applyViewShell(state.view);
+translateDocument();
+document.documentElement.classList.add("i18n-ready");
 const escapeHtml = (v) =>
   String(v ?? "").replace(
     /[&<>\"]/g,

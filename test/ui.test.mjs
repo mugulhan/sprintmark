@@ -159,3 +159,19 @@ test("direct project routes avoid rendering the calendar before project data", a
   assert.match(styles, /body\.app-loading main > section/);
   assert.match(styles, /@keyframes loading-sheen/);
 });
+
+test("the saved locale is applied before the first visible header paint", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, /localStorage\.getItem\("sprintmark-locale"\)/);
+  assert.match(html, /document\.documentElement\.lang = savedLocale/);
+  assert.match(
+    app,
+    /translateDocument\(\);\s+document\.documentElement\.classList\.add\("i18n-ready"\)/,
+  );
+  assert.match(styles, /html:not\(\.i18n-ready\) header/);
+});
