@@ -136,6 +136,16 @@ test("project documents render as heading-based documentation pages", async () =
   assert.match(app, /function renderDocumentSection\(index\)/);
   assert.match(app, /\/document-references/);
   assert.match(app, /projectDocumentUpload/);
+  assert.match(
+    app,
+    /data-project-document-preview="\$\{document\.index\}">Aç<\/button>/,
+  );
+  assert.match(
+    app,
+    /href="\$\{escapeHtml\(document\.url\)\}"[^>]*>Önizle<\/a>/,
+  );
+  assert.match(html, /id="documentPreviewOpen"/);
+  assert.match(html, />Dosyayı önizle<\/a/);
   assert.match(app, /target="_blank" rel="noopener noreferrer"/);
   assert.match(styles, /\.project-tabs/);
   assert.match(styles, /\.document-reader/);

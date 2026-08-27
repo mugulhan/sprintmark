@@ -86,6 +86,7 @@ const english = new Map([
   ["Çalışma alanındaki dosyayı bağla", "Link a workspace file"],
   ["Bağla", "Link"],
   ["Önizle", "Preview"],
+  ["Dosyayı önizle", "Preview file"],
   ["Yeni sekmede aç", "Open in new tab"],
   ["İçindekiler", "Contents"],
   ["Doküman hazırlanıyor…", "Preparing document…"],
