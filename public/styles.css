@@ -117,12 +117,38 @@ button:hover {
 .filters {
   margin-top: 11px;
 }
-.projects-home {
+.breadcrumb {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  min-width: 0;
+  max-width: min(560px, 45vw);
+  padding: 7px 10px;
+  border: 1px solid #b9d2ea;
+  border-radius: 8px;
+  background: #f5f9fd;
+  color: var(--navy);
   white-space: nowrap;
   font-weight: 700;
+}
+.breadcrumb a,
+.breadcrumb-current {
+  min-width: 0;
+  max-width: 210px;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breadcrumb a:hover {
+  color: var(--blue);
+}
+.breadcrumb-current {
+  font-weight: 900;
+}
+.breadcrumb-separator {
+  flex: 0 0 auto;
+  color: #7b8fa3;
 }
 .project-picker {
   display: flex;
@@ -1586,6 +1612,16 @@ body[data-view="projects"] #plannerStatus {
   .filters .summary {
     margin-left: 0;
     width: 100%;
+  }
+  .breadcrumb {
+    order: -1;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .breadcrumb a,
+  .breadcrumb-current {
+    max-width: 180px;
   }
   .date-fields,
   .split-actions {

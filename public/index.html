@@ -36,55 +36,92 @@
           />
           <div class="brand-copy">
             <h1>Sprintmark</h1>
-            <div id="buildMeta" class="build-meta">Sürüm yükleniyor…</div>
+            <div id="buildMeta" class="build-meta">…</div>
           </div>
         </div>
         <nav>
-          <button class="nav active" data-view="calendar">Takvim</button
-          ><button class="nav" data-view="backlog">Sorun Backlog'u</button
-          ><button id="newItem">Yeni iş</button>
+          <button
+            class="nav active"
+            data-view="calendar"
+            data-i18n="nav.calendar"
+          >
+            Takvim</button
+          ><button class="nav" data-view="backlog" data-i18n="nav.backlog">
+            Sorun Backlog'u</button
+          ><button id="newItem" data-i18n="nav.newItem">Yeni iş</button>
         </nav>
       </div>
       <div class="filters">
-        <button
-          class="nav projects-home"
-          data-view="projects"
-          data-project-root
-          aria-label="Projeler ekranına dön"
-        >
-          <span aria-hidden="true">←</span> Projeler
-        </button>
+        <nav id="breadcrumb" class="breadcrumb" aria-label="Sayfa yolu"></nav>
         <label class="project-picker"
-          ><span>Proje</span
+          ><span data-i18n="project.picker">Proje</span
           ><select id="projectSelect"></select
         ></label>
-        <button id="newProject">Yeni proje</button>
-        <button id="previousMonth" aria-label="Önceki ay">←</button
+        <button id="newProject" data-i18n="project.new">Yeni proje</button>
+        <button
+          id="previousMonth"
+          aria-label="Önceki ay"
+          data-i18n-aria-label="calendar.previousMonth"
+        >
+          ←</button
         ><strong id="monthLabel"></strong
-        ><button id="nextMonth" aria-label="Sonraki ay">→</button>
-        <button id="today">Son aya git</button>
+        ><button
+          id="nextMonth"
+          aria-label="Sonraki ay"
+          data-i18n-aria-label="calendar.nextMonth"
+        >
+          →
+        </button>
+        <button id="today" data-i18n="filters.latestMonth">Son aya git</button>
         <select id="statusFilter">
-          <option value="">Tüm durumlar</option>
+          <option value="" data-i18n="filters.allStatuses">Tüm durumlar</option>
         </select>
         <select id="teamFilter">
-          <option value="">Tüm ekipler</option>
-          <option value="content-technical">İçerik / Teknik</option>
-          <option value="web-development">Web Yazılım</option>
+          <option value="" data-i18n="filters.allTeams">Tüm ekipler</option>
+          <option value="content-technical" data-i18n="team.contentTechnical">
+            İçerik / Teknik
+          </option>
+          <option value="web-development" data-i18n="team.webDevelopment">
+            Web Yazılım
+          </option>
         </select>
-        <select id="priorityFilter" aria-label="Öncelik filtresi">
-          <option value="">Tüm öncelikler</option>
-          <option value="critical">Kritik</option>
-          <option value="high">Yüksek</option>
-          <option value="medium">Orta</option>
-          <option value="low">Düşük</option>
-          <option value="none">Belirlenmedi</option>
+        <select
+          id="priorityFilter"
+          aria-label="Öncelik filtresi"
+          data-i18n-aria-label="filters.priorityLabel"
+        >
+          <option value="" data-i18n="filters.allPriorities">
+            Tüm öncelikler
+          </option>
+          <option value="critical" data-i18n="priority.critical">Kritik</option>
+          <option value="high" data-i18n="priority.high">Yüksek</option>
+          <option value="medium" data-i18n="priority.medium">Orta</option>
+          <option value="low" data-i18n="priority.low">Düşük</option>
+          <option value="none" data-i18n="priority.unspecified">
+            Belirlenmedi
+          </option>
         </select>
-        <select id="localeSelect" aria-label="Dil">
+        <select
+          id="localeSelect"
+          aria-label="Dil"
+          data-i18n-aria-label="locale.label"
+        >
           <option value="tr">TR</option>
           <option value="en">EN</option>
         </select>
-        <input id="search" type="search" placeholder="Görevlerde ara…" />
-        <button id="sprintButton" class="sprint-button">Sprint oluştur</button>
+        <input
+          id="search"
+          type="search"
+          placeholder="Görevlerde ara…"
+          data-i18n-placeholder="filters.search"
+        />
+        <button
+          id="sprintButton"
+          class="sprint-button"
+          data-i18n="sprint.create"
+        >
+          Sprint oluştur
+        </button>
         <span id="plannerStatus" class="planner-status" hidden></span>
         <span id="summary" class="summary"></span>
       </div>
@@ -95,20 +132,30 @@
         <div class="calendar-layout">
           <div class="calendar-main">
             <div class="weekdays">
-              <span>Pazartesi</span><span>Salı</span><span>Çarşamba</span
-              ><span>Perşembe</span><span>Cuma</span><span>Cumartesi</span
-              ><span>Pazar</span>
+              <span data-i18n="calendar.monday">Pazartesi</span
+              ><span data-i18n="calendar.tuesday">Salı</span
+              ><span data-i18n="calendar.wednesday">Çarşamba</span
+              ><span data-i18n="calendar.thursday">Perşembe</span
+              ><span data-i18n="calendar.friday">Cuma</span
+              ><span data-i18n="calendar.saturday">Cumartesi</span
+              ><span data-i18n="calendar.sunday">Pazar</span>
             </div>
             <div id="calendar" class="calendar"></div>
           </div>
           <aside class="undated" data-drop-date="">
             <div class="undated-head">
-              <strong>Tarihi bulunmayan işler</strong>
+              <strong data-i18n="calendar.unscheduled"
+                >Tarihi bulunmayan işler</strong
+              >
               <span id="undatedCount"></span>
             </div>
-            <p>Kartı takvimdeki bir güne sürükleyin.</p>
+            <p data-i18n="calendar.dragHelp">
+              Kartı takvimdeki bir güne sürükleyin.
+            </p>
             <div id="undated"></div>
-            <div class="drop-back">Tarihi kaldırmak için buraya bırakın</div>
+            <div class="drop-back" data-i18n="calendar.dropToRemove">
+              Tarihi kaldırmak için buraya bırakın
+            </div>
           </aside>
         </div>
       </section>
@@ -120,10 +167,14 @@
           <aside class="project-list-panel">
             <div class="section-head">
               <div>
-                <h2>Projeler</h2>
-                <p>Aktif ve arşivlenmiş çalışma alanları</p>
+                <h2 data-i18n="projects.title">Projeler</h2>
+                <p data-i18n="projects.subtitle">
+                  Aktif ve arşivlenmiş çalışma alanları
+                </p>
               </div>
-              <button id="newProjectFromList">Yeni proje</button>
+              <button id="newProjectFromList" data-i18n="project.new">
+                Yeni proje
+              </button>
             </div>
             <div id="projectList" class="project-list"></div>
           </aside>
@@ -142,18 +193,30 @@
             ><span id="detailTeam"></span>
           </div>
         </div>
-        <button class="close" aria-label="Kapat">×</button>
+        <button
+          class="close"
+          aria-label="Kapat"
+          data-i18n-aria-label="work.close"
+        >
+          ×
+        </button>
       </div>
       <div class="detail-grid">
         <aside class="actions">
-          <button id="copyLink">Kalıcı bağlantıyı kopyala</button>
+          <button id="copyLink" data-i18n="work.copyLink">
+            Kalıcı bağlantıyı kopyala
+          </button>
           <button id="toggleDone" type="button" class="completion-action">
             Tamamlandı olarak işaretle
           </button>
-          <button id="editWorkItem">İçeriği düzenle</button>
+          <button id="editWorkItem" data-i18n="work.edit">
+            İçeriği düzenle
+          </button>
           <dl id="facts"></dl>
           <section id="attachmentForm" aria-labelledby="evidenceTitle">
-            <h3 id="evidenceTitle">Kanıt dosyaları</h3>
+            <h3 id="evidenceTitle" data-i18n="work.evidenceFiles">
+              Kanıt dosyaları
+            </h3>
             <input
               id="attachment"
               class="visually-hidden"
@@ -166,9 +229,11 @@
               id="evidencePasteZone"
               type="button"
             >
-              <strong>Dosya ekle</strong>
-              <span>Tıklayın, sürükleyin veya görsel yapıştırın</span>
-              <small
+              <strong data-i18n="work.addFile">Dosya ekle</strong>
+              <span data-i18n="work.fileDropHelp"
+                >Tıklayın, sürükleyin veya görsel yapıştırın</span
+              >
+              <small data-i18n="work.fileTypes"
                 >Görsel, PDF, CSV, JSON, metin veya Office · en fazla 25
                 MB</small
               >
@@ -178,53 +243,103 @@
         </aside>
         <div class="content-panel">
           <form id="editMetadata" class="edit-metadata">
-            <label>Durum<select id="editStatus"></select></label>
             <label
-              >Ekip<select id="editTeam">
-                <option value="content-technical">İçerik / Teknik</option>
-                <option value="web-development">Web Yazılım</option>
+              ><span data-i18n="work.status">Durum</span
+              ><select id="editStatus"></select
+            ></label>
+            <label
+              ><span data-i18n="work.team">Ekip</span
+              ><select id="editTeam">
+                <option
+                  value="content-technical"
+                  data-i18n="team.contentTechnical"
+                >
+                  İçerik / Teknik
+                </option>
+                <option value="web-development" data-i18n="team.webDevelopment">
+                  Web Yazılım
+                </option>
               </select></label
             >
             <label
-              >Öncelik<select id="editPriority">
-                <option value="">Belirlenmedi</option>
-                <option value="critical">Kritik</option>
-                <option value="high">Yüksek</option>
-                <option value="medium">Orta</option>
-                <option value="low">Düşük</option>
+              ><span data-i18n="work.priority">Öncelik</span
+              ><select id="editPriority">
+                <option value="" data-i18n="priority.unspecified">
+                  Belirlenmedi
+                </option>
+                <option value="critical" data-i18n="priority.critical">
+                  Kritik
+                </option>
+                <option value="high" data-i18n="priority.high">Yüksek</option>
+                <option value="medium" data-i18n="priority.medium">Orta</option>
+                <option value="low" data-i18n="priority.low">Düşük</option>
               </select></label
             >
             <label class="planned-at"
-              >Planlanan zaman
+              ><span data-i18n="work.scheduledAt">Planlanan zaman</span>
               <span class="schedule-control">
-                <input id="editDate" type="date" aria-label="Planlanan tarih" />
-                <input id="editTime" type="time" aria-label="Planlanan saat" />
+                <input
+                  id="editDate"
+                  type="date"
+                  aria-label="Planlanan tarih"
+                  data-i18n-aria-label="work.scheduledDate"
+                />
+                <input
+                  id="editTime"
+                  type="time"
+                  aria-label="Planlanan saat"
+                  data-i18n-aria-label="work.scheduledTime"
+                />
               </span>
             </label>
-            <button id="saveMetadata" type="submit" class="primary">
+            <button
+              id="saveMetadata"
+              type="submit"
+              class="primary"
+              data-i18n="work.update"
+            >
               Güncelle
             </button>
           </form>
           <div id="editConflict" class="conflict-banner" hidden>
-            <strong>Bu kayıt başka bir işlemde güncellendi.</strong>
-            <span>Editördeki taslağınız korunuyor.</span>
+            <strong data-i18n="work.conflictTitle"
+              >Bu kayıt başka bir işlemde güncellendi.</strong
+            >
+            <span data-i18n="work.conflictCaption"
+              >Editördeki taslağınız korunuyor.</span
+            >
             <div>
-              <button id="copyDraft">Taslağı panoya kopyala</button>
-              <button id="reloadWorkItem">Güncel sürümü yükle</button>
+              <button id="copyDraft" data-i18n="work.copyDraft">
+                Taslağı panoya kopyala
+              </button>
+              <button id="reloadWorkItem" data-i18n="work.reload">
+                Güncel sürümü yükle
+              </button>
             </div>
           </div>
           <article id="detailBody" class="markdown"></article>
           <div id="detailEditor" class="rich-editor" hidden></div>
           <div id="editorActions" class="editor-actions" hidden>
-            <button id="cancelWorkItemEdit">Vazgeç</button>
-            <button id="saveWorkItem" class="primary">Kaydet</button>
+            <button id="cancelWorkItemEdit" data-i18n="work.cancel">
+              Vazgeç
+            </button>
+            <button id="saveWorkItem" class="primary" data-i18n="work.save">
+              Kaydet
+            </button>
           </div>
         </div>
       </div>
     </dialog>
 
     <dialog id="imageLightbox" class="image-lightbox">
-      <button type="button" class="lightbox-close" aria-label="Kapat">×</button>
+      <button
+        type="button"
+        class="lightbox-close"
+        aria-label="Kapat"
+        data-i18n-aria-label="work.close"
+      >
+        ×
+      </button>
       <img id="lightboxImage" alt="" />
       <p id="lightboxCaption"></p>
     </dialog>
@@ -241,15 +356,24 @@
               id="documentPreviewOpen"
               target="_blank"
               rel="noopener noreferrer"
+              data-i18n="documents.previewFile"
               >Dosyayı önizle</a
             >
             <a
               id="documentPreviewDownload"
               target="_blank"
               rel="noopener noreferrer"
+              data-i18n="documents.download"
               >İndir</a
             >
-            <button type="button" class="close" aria-label="Kapat">×</button>
+            <button
+              type="button"
+              class="close"
+              aria-label="Kapat"
+              data-i18n-aria-label="work.close"
+            >
+              ×
+            </button>
           </div>
         </header>
         <div class="document-reader">
@@ -265,27 +389,36 @@
     <dialog id="projectEditDialog" class="create-dialog">
       <form id="projectEditForm">
         <div class="dialog-head">
-          <h2>Proje bilgilerini düzenle</h2>
+          <h2 data-i18n="project.editTitle">Proje bilgilerini düzenle</h2>
           <button type="button" class="close">×</button>
         </div>
-        <label>Proje adı<input name="name" required maxlength="120" /></label>
         <label
-          >Açıklama<textarea
-            name="description"
-            rows="5"
-            maxlength="10000"
-          ></textarea>
+          ><span data-i18n="project.name">Proje adı</span
+          ><input name="name" required maxlength="120"
+        /></label>
+        <label
+          ><span data-i18n="project.description">Açıklama</span
+          ><textarea name="description" rows="5" maxlength="10000"></textarea>
         </label>
         <label
-          >Durum<select name="status">
-            <option value="active">Aktif</option>
-            <option value="archived">Arşivlendi</option>
+          ><span data-i18n="work.status">Durum</span
+          ><select name="status">
+            <option value="active" data-i18n="project.status.active">
+              Aktif
+            </option>
+            <option value="archived" data-i18n="project.status.archivedField">
+              Arşivlendi
+            </option>
           </select></label
         >
         <div class="immutable-note" id="projectImmutable"></div>
         <div class="form-actions">
-          <button type="button" class="close">Vazgeç</button>
-          <button type="submit" class="primary">Projeyi güncelle</button>
+          <button type="button" class="close" data-i18n="work.cancel">
+            Vazgeç
+          </button>
+          <button type="submit" class="primary" data-i18n="project.update">
+            Projeyi güncelle
+          </button>
         </div>
       </form>
     </dialog>
@@ -293,25 +426,34 @@
     <dialog id="projectDialog" class="create-dialog">
       <form id="projectForm">
         <div class="dialog-head">
-          <h2>Yeni proje oluştur</h2>
+          <h2 data-i18n="project.newTitle">Yeni proje oluştur</h2>
           <button type="button" class="close">×</button>
         </div>
-        <label>Proje adı<input name="name" required maxlength="120" /></label>
         <label
-          >Kısa kod<input
+          ><span data-i18n="project.name">Proje adı</span
+          ><input name="name" required maxlength="120"
+        /></label>
+        <label
+          ><span data-i18n="project.code">Kısa kod</span
+          ><input
             name="code"
             required
             minlength="2"
             maxlength="8"
             pattern="[A-Za-z][A-Za-z0-9]{1,7}"
             placeholder="Örn. ASG"
-          /><small
+            data-i18n-placeholder="project.codeExample"
+          /><small data-i18n="project.codeHelp"
             >İş ve sprint anahtarlarında kullanılır; sonradan değişmez.</small
           ></label
         >
         <div class="form-actions">
-          <button type="button" class="close">Vazgeç</button>
-          <button type="submit" class="primary">Projeyi oluştur</button>
+          <button type="button" class="close" data-i18n="work.cancel">
+            Vazgeç
+          </button>
+          <button type="submit" class="primary" data-i18n="project.create">
+            Projeyi oluştur
+          </button>
         </div>
       </form>
     </dialog>
@@ -319,31 +461,51 @@
     <dialog id="sprintDialog" class="create-dialog">
       <form id="sprintForm">
         <div class="dialog-head">
-          <h2>Yeni sprint oluştur</h2>
+          <h2 data-i18n="sprint.newTitle">Yeni sprint oluştur</h2>
           <button type="button" class="close">×</button>
         </div>
-        <label>Sprint adı<input name="name" required maxlength="120" /></label>
+        <label
+          ><span data-i18n="sprint.name">Sprint adı</span
+          ><input name="name" required maxlength="120"
+        /></label>
         <div class="date-fields">
           <label
-            >Başlangıç<input name="start_date" type="date" required
+            ><span data-i18n="sprint.start">Başlangıç</span
+            ><input name="start_date" type="date" required
           /></label>
-          <label>Bitiş<input name="end_date" type="date" required /></label>
+          <label
+            ><span data-i18n="sprint.end">Bitiş</span
+            ><input name="end_date" type="date" required
+          /></label>
         </div>
         <label
-          >Durum<select name="status">
-            <option value="planned">Planlandı</option>
-            <option value="active">Aktif</option>
+          ><span data-i18n="work.status">Durum</span
+          ><select name="status">
+            <option value="planned" data-i18n="status.planned">
+              Planlandı
+            </option>
+            <option value="active" data-i18n="status.active">Aktif</option>
           </select></label
         >
-        <div class="sprint-help">
+        <div class="sprint-help" data-i18n="sprint.help">
           Tarihleri alanlardan girebilir veya takvim üzerinde başlangıç ve bitiş
           günlerini seçebilirsiniz.
         </div>
         <div class="form-actions split-actions">
-          <button type="button" id="selectSprintDates">Takvimden seç</button>
+          <button
+            type="button"
+            id="selectSprintDates"
+            data-i18n="sprint.selectCalendar"
+          >
+            Takvimden seç
+          </button>
           <span></span>
-          <button type="button" class="close">Vazgeç</button>
-          <button type="submit" class="primary">Sprint oluştur</button>
+          <button type="button" class="close" data-i18n="work.cancel">
+            Vazgeç
+          </button>
+          <button type="submit" class="primary" data-i18n="sprint.create">
+            Sprint oluştur
+          </button>
         </div>
       </form>
     </dialog>
@@ -351,46 +513,61 @@
     <dialog id="createDialog" class="create-dialog">
       <form id="createForm">
         <div class="dialog-head">
-          <h2>Yeni iş kaydı</h2>
+          <h2 data-i18n="work.newTitle">Yeni iş kaydı</h2>
           <button type="button" class="close">×</button>
         </div>
         <label
-          >Tür<select name="kind">
-            <option value="task">Görev</option>
-            <option value="backlog">Backlog</option>
-          </select></label
-        ><label>Başlık<input name="title" required maxlength="240" /></label
-        ><label
-          >Ekip<select name="team">
-            <option value="content-technical">İçerik / Teknik</option>
-            <option value="web-development">Web Yazılım</option>
+          ><span data-i18n="work.type">Tür</span
+          ><select name="kind">
+            <option value="task" data-i18n="work.task">Görev</option>
+            <option value="backlog" data-i18n="work.backlog">Backlog</option>
           </select></label
         ><label
-          >Öncelik<select name="priority">
-            <option value="">Belirlenmedi</option>
-            <option value="critical">Kritik</option>
-            <option value="high">Yüksek</option>
-            <option value="medium">Orta</option>
-            <option value="low">Düşük</option>
+          ><span data-i18n="work.title">Başlık</span
+          ><input name="title" required maxlength="240" /></label
+        ><label
+          ><span data-i18n="work.team">Ekip</span
+          ><select name="team">
+            <option value="content-technical" data-i18n="team.contentTechnical">
+              İçerik / Teknik
+            </option>
+            <option value="web-development" data-i18n="team.webDevelopment">
+              Web Yazılım
+            </option>
+          </select></label
+        ><label
+          ><span data-i18n="work.priority">Öncelik</span
+          ><select name="priority">
+            <option value="" data-i18n="priority.unspecified">
+              Belirlenmedi
+            </option>
+            <option value="critical" data-i18n="priority.critical">
+              Kritik
+            </option>
+            <option value="high" data-i18n="priority.high">Yüksek</option>
+            <option value="medium" data-i18n="priority.medium">Orta</option>
+            <option value="low" data-i18n="priority.low">Düşük</option>
           </select></label
         >
         <label class="planned-at"
-          >Planlanan zaman
+          ><span data-i18n="work.scheduledAt">Planlanan zaman</span>
           <span class="schedule-control">
             <input
               name="scheduled_for"
               type="date"
               aria-label="Planlanan tarih"
+              data-i18n-aria-label="work.scheduledDate"
             />
             <input
               name="scheduled_time"
               type="time"
               aria-label="Planlanan saat"
+              data-i18n-aria-label="work.scheduledTime"
             />
           </span>
         </label>
         <label
-          >Detay
+          ><span data-i18n="work.details">Detay</span>
           <div id="createEditor" class="rich-editor"></div
         ></label>
         <input
@@ -405,12 +582,16 @@
           id="createEvidencePasteZone"
           role="button"
           tabindex="0"
+          data-i18n="work.newEvidenceHelp"
         >
           Kanıt dosyalarını seçin, buraya bırakın veya görsel yapıştırın.
         </div>
         <div class="form-actions">
-          <button type="button" class="close">Vazgeç</button
-          ><button type="submit" class="primary">Kaydı oluştur</button>
+          <button type="button" class="close" data-i18n="work.cancel">
+            Vazgeç</button
+          ><button type="submit" class="primary" data-i18n="work.create">
+            Kaydı oluştur
+          </button>
         </div>
       </form>
     </dialog>

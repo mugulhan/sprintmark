@@ -1,4 +1,4 @@
-import { locale, t, translateDocument } from "./i18n.js";
+import { locale, t, tp, translateDocument } from "./i18n.js";
 
 const initialView = location.pathname.startsWith("/projects")
   ? "projects"
@@ -57,24 +57,34 @@ const escapeHtml = (v) =>
     /[&<>\"]/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
   );
-const teamName = (v) =>
-  t(v === "web-development" ? "Web Yazılım" : "İçerik / Teknik");
-const statusName = (v) =>
+const teamName = (value) =>
+  t(
+    value === "web-development"
+      ? "team.webDevelopment"
+      : "team.contentTechnical",
+  );
+const statusName = (value) =>
   t(
     {
-      open: "Açık",
-      done: "Tamamlandı",
-      triage: "Değerlendirilecek",
-      software: "Yazılıma İletilecek",
-      waiting: "Beklemede",
-    }[v] || v,
+      open: "status.open",
+      done: "status.done",
+      triage: "status.triage",
+      software: "status.software",
+      waiting: "status.waiting",
+      planned: "status.planned",
+      active: "status.active",
+      completed: "status.done",
+    }[value] || value,
   );
-const sprintStatusName = (v) =>
-  t({ planned: "Planlandı", active: "Aktif", completed: "Tamamlandı" }[v] || v);
-const priorityName = (v) =>
+const sprintStatusName = statusName;
+const priorityName = (value) =>
   t(
-    { critical: "Kritik", high: "Yüksek", medium: "Orta", low: "Düşük" }[v] ||
-      "Belirlenmedi",
+    {
+      critical: "priority.critical",
+      high: "priority.high",
+      medium: "priority.medium",
+      low: "priority.low",
+    }[value] || "priority.unspecified",
   );
 const priorityRank = (v) =>
   ({ critical: 0, high: 1, medium: 2, low: 3, null: 4 })[v ?? "null"] ?? 4;
@@ -127,12 +137,76 @@ const projectSprints = () =>
   state.sprints.filter(
     (sprint) => sprint.project_key === state.selectedProject,
   );
+function returnPathContext() {
+  if (!state.returnPath || state.returnPath === "/") return null;
+  const path = new URL(state.returnPath, location.origin);
+  if (path.pathname.startsWith("/backlog"))
+    return { label: t("breadcrumb.backlog"), href: viewCanonical("backlog") };
+  if (path.pathname.startsWith("/calendar"))
+    return {
+      label: t("breadcrumb.calendar"),
+      href: viewCanonical("calendar"),
+    };
+  if (path.pathname.startsWith("/projects/")) {
+    const documents = path.searchParams.get("tab") === "documents";
+    return {
+      label: t(documents ? "breadcrumb.documents" : "breadcrumb.overview"),
+      href: `${projectCanonical(currentProject())}${documents ? "?tab=documents" : ""}`,
+    };
+  }
+  return null;
+}
+function breadcrumbItems() {
+  const project = currentProject();
+  const items = [
+    {
+      label: t("breadcrumb.projects"),
+      href: "/projects/",
+      current: state.projectIndex && !state.selected,
+    },
+  ];
+  if (!project || items[0].current) return items;
+  items.push({ label: project.name, href: projectCanonical(project) });
+  const itemOpen =
+    Boolean(state.selected) && location.pathname.startsWith("/work-items/");
+  if (itemOpen) {
+    const context = returnPathContext();
+    if (context) items.push(context);
+    items.push({ label: state.selected.key, current: true });
+    return items;
+  }
+  items.push({
+    label: t(
+      state.view === "calendar"
+        ? "breadcrumb.calendar"
+        : state.view === "backlog"
+          ? "breadcrumb.backlog"
+          : state.projectSection === "documents"
+            ? "breadcrumb.documents"
+            : "breadcrumb.overview",
+    ),
+    current: true,
+  });
+  return items;
+}
+function renderBreadcrumb() {
+  const breadcrumb = $("breadcrumb");
+  breadcrumb.setAttribute("aria-label", t("breadcrumb.label"));
+  breadcrumb.innerHTML = breadcrumbItems()
+    .map((item) => {
+      const label = escapeHtml(item.label);
+      return item.current
+        ? `<span class="breadcrumb-current" aria-current="page" title="${label}">${label}</span>`
+        : `<a href="${escapeHtml(item.href)}" title="${label}">${label}</a>`;
+    })
+    .join('<span class="breadcrumb-separator" aria-hidden="true">/</span>');
+}
 function updateDocumentTitle(item = null) {
   if (item) {
     document.title = `${item.title} · ${item.key} · Sprintmark`;
     return;
   }
-  document.title = `${currentProject()?.name || t("Projeler")} · Sprintmark`;
+  document.title = `${currentProject()?.name || t("breadcrumb.projects")} · Sprintmark`;
 }
 function renderProjectOptions() {
   $("projectSelect").innerHTML = state.projects
@@ -142,10 +216,33 @@ function renderProjectOptions() {
     )
     .map(
       (project) =>
-        `<option value="${project.key}">${escapeHtml(project.name)} (${project.code})${project.status === "archived" ? " · Arşiv" : ""}</option>`,
+        `<option value="${project.key}">${escapeHtml(project.name)} (${project.code})${project.status === "archived" ? ` · ${t("project.status.archived")}` : ""}</option>`,
     )
     .join("");
   $("projectSelect").value = state.selectedProject;
+}
+function renderStatusOptions() {
+  const selected = $("statusFilter").value;
+  const statuses = [...new Set(state.items.map((item) => item.status))];
+  $("statusFilter").innerHTML =
+    `<option value="">${t("filters.allStatuses")}</option>` +
+    statuses
+      .map(
+        (status) => `<option value="${status}">${statusName(status)}</option>`,
+      )
+      .join("");
+  $("statusFilter").value = selected;
+}
+function renderBuildMeta() {
+  if (!state.meta) return;
+  $("buildMeta").textContent = `v${state.meta.version}`;
+  $("buildMeta").setAttribute(
+    "aria-label",
+    t("app.versionLabel", { version: state.meta.version }),
+  );
+  $("buildMeta").dataset.branch = state.meta.branch;
+  $("buildMeta").dataset.commit = state.meta.sha;
+  $("buildMeta").dataset.dirty = String(Boolean(state.meta.dirty));
 }
 
 const editorToolbar = [
@@ -209,7 +306,7 @@ function linkWorkspaceReferences(root) {
     if (!reference) continue;
     if (!reference.exists) {
       code.classList.add("missing-file-reference");
-      code.title = "Dosya bulunamadı";
+      code.title = t("documents.missing");
       continue;
     }
     const link = document.createElement("a");
@@ -217,7 +314,7 @@ function linkWorkspaceReferences(root) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.className = "workspace-file-link";
-    link.title = `${reference.name} dosyasını aç`;
+    link.title = t("documents.openNamed", { name: reference.name });
     code.replaceWith(link);
     link.append(code);
   }
@@ -336,14 +433,15 @@ function renderCalendar() {
     const visibleItems = expanded ? dayItems : dayItems.slice(0, 4);
     const moreButton =
       dayItems.length > 4
-        ? `<button class="more" data-day="${iso}" aria-expanded="${expanded}">${expanded ? "Daha az göster" : `+${dayItems.length - 4} daha`}</button>`
+        ? `<button class="more" data-day="${iso}" aria-expanded="${expanded}">${expanded ? t("calendar.showLess") : t("calendar.showMore", { count: dayItems.length - 4 })}</button>`
         : "";
-    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><div class="date"><span>${date.getDate()}</span><span><button class="day-add" data-create-date="${iso}" title="Bu güne iş ekle">+</button><span class="count">${dayItems.length ? `${dayItems.length} iş` : ""}</span></span></div><div class="sprint-markers">${markers}</div>${visibleItems.map(card).join("")}${moreButton}</div>`;
+    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><div class="date"><span>${date.getDate()}</span><span><button class="day-add" data-create-date="${iso}" title="${t("calendar.addToDay")}">+</button><span class="count">${dayItems.length ? tp("calendar.itemCount", dayItems.length) : ""}</span></span></div><div class="sprint-markers">${markers}</div>${visibleItems.map(card).join("")}${moreButton}</div>`;
   }
   $("calendar").innerHTML = html;
   const undated = items.filter((i) => !i.scheduled_for);
-  $("undated").innerHTML = undated.map(card).join("") || "<span>Yok</span>";
-  $("undatedCount").textContent = `${undated.length} iş`;
+  $("undated").innerHTML =
+    undated.map(card).join("") || `<span>${t("calendar.empty")}</span>`;
+  $("undatedCount").textContent = tp("calendar.itemCount", undated.length);
 }
 function renderBacklog() {
   const items = filtered().filter((i) => i.kind === "backlog"),
@@ -369,7 +467,11 @@ function renderProjectList() {
       const items = state.items.filter(
         (item) => item.project_key === project.key,
       );
-      return `<button class="project-list-card${!state.projectIndex && project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${project.status === "active" ? "Aktif" : "Arşiv"}</span><small>${items.filter((item) => item.kind === "task").length} iş · ${items.filter((item) => item.kind === "backlog").length} backlog</small></button>`;
+      const taskCount = items.filter((item) => item.kind === "task").length;
+      const backlogCount = items.filter(
+        (item) => item.kind === "backlog",
+      ).length;
+      return `<button class="project-list-card${!state.projectIndex && project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${t(project.status === "active" ? "project.status.active" : "project.status.archived")}</span><small>${tp("count.task", taskCount)} · ${tp("count.backlog", backlogCount)}</small></button>`;
     })
     .join("");
 }
@@ -387,14 +489,15 @@ function renderProjectDocumentCard(document) {
     document.original_name || document.name || document.path,
   );
   if (!document.exists)
-    return `<article class="project-document-card missing"><div class="document-symbol">!</div><div><strong>${name}</strong><span>Dosya bulunamadı</span></div><button data-project-document-remove="${document.index}">Kaldır</button></article>`;
+    return `<article class="project-document-card missing"><div class="document-symbol">!</div><div><strong>${name}</strong><span>${t("documents.missing")}</span></div><button data-project-document-remove="${document.index}">${t("documents.remove")}</button></article>`;
   const openInReader = canPreviewDocument(document)
-    ? `<button data-project-document-preview="${document.index}">Aç</button>`
+    ? `<button data-project-document-preview="${document.index}">${t("documents.open")}</button>`
     : "";
-  return `<article class="project-document-card"><div class="document-symbol">${escapeHtml(fileExtension(document.original_name || document.name))}</div><div class="document-summary"><strong title="${name}">${name}</strong><span>${escapeHtml(document.source === "workspace" ? document.path : "Yüklenen dosya")}</span><small>${escapeHtml(fileExtension(document.original_name || document.name))} · ${escapeHtml(formatFileSize(document.size))}</small></div><div class="document-actions">${openInReader}<a href="${escapeHtml(document.url)}" target="_blank" rel="noopener noreferrer">Önizle</a><a href="${escapeHtml(document.download_url)}" target="_blank" rel="noopener noreferrer">İndir</a><button data-project-document-remove="${document.index}">Kaldır</button></div></article>`;
+  return `<article class="project-document-card"><div class="document-symbol">${escapeHtml(fileExtension(document.original_name || document.name))}</div><div class="document-summary"><strong title="${name}">${name}</strong><span>${escapeHtml(document.source === "workspace" ? document.path : t("documents.uploadedFile"))}</span><small>${escapeHtml(fileExtension(document.original_name || document.name))} · ${escapeHtml(formatFileSize(document.size))}</small></div><div class="document-actions">${openInReader}<a href="${escapeHtml(document.url)}" target="_blank" rel="noopener noreferrer">${t("documents.preview")}</a><a href="${escapeHtml(document.download_url)}" target="_blank" rel="noopener noreferrer">${t("documents.download")}</a><button data-project-document-remove="${document.index}">${t("documents.remove")}</button></div></article>`;
 }
 function renderProjectDocuments(project) {
-  return `<section class="dashboard-section project-documents-section"><div class="section-head"><div><h3>Proje dokümanları</h3><p>Mimari, teknik ve operasyonel belgeleri proje kapsamında yönetin.</p></div><button data-project-document-upload>Dosya yükle</button></div><input id="projectDocumentUpload" class="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx" multiple><form id="projectDocumentReferenceForm" class="document-reference-form"><label>Çalışma alanındaki dosyayı bağla<input name="path" required placeholder="Örn. YENIWEB_MIMARISI.md"></label><button type="submit">Bağla</button></form><div class="project-document-list">${state.projectDocuments.length ? state.projectDocuments.map(renderProjectDocumentCard).join("") : `<div class="empty-documents"><strong>Henüz doküman eklenmedi.</strong><span>Dosya yükleyebilir veya çalışma alanındaki mevcut bir belgeyi bağlayabilirsiniz.</span></div>`}</div><small class="document-limit">${project.documents?.length || 0}/50 doküman</small></section>`;
+  const documentCount = project.documents?.length || 0;
+  return `<section class="dashboard-section project-documents-section"><div class="section-head"><div><h3>${t("documents.title")}</h3><p>${t("documents.subtitle")}</p></div><button data-project-document-upload>${t("documents.upload")}</button></div><input id="projectDocumentUpload" class="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx" multiple><form id="projectDocumentReferenceForm" class="document-reference-form"><label>${t("documents.linkWorkspace")}<input name="path" required placeholder="${t("documents.workspacePlaceholder")}"></label><button type="submit">${t("documents.link")}</button></form><div class="project-document-list">${state.projectDocuments.length ? state.projectDocuments.map(renderProjectDocumentCard).join("") : `<div class="empty-documents"><strong>${t("documents.empty")}</strong><span>${t("documents.emptyCaption")}</span></div>`}</div><small class="document-limit">${documentCount}/50 · ${tp("count.document", documentCount)}</small></section>`;
 }
 
 function updateProjectInState(project) {
@@ -409,7 +512,7 @@ async function loadProjectDocuments() {
   if (!project) return;
   const response = await fetch(`/api/v1/projects/${project.uid}/documents`);
   if (!response.ok)
-    throw new Error((await response.json()).error || "Dokümanlar yüklenemedi.");
+    throw new Error((await response.json()).error || t("error.documentsLoad"));
   state.projectDocuments = (await response.json()).items;
 }
 
@@ -430,6 +533,7 @@ async function setProjectSection(section, updateAddress = true) {
       history.replaceState({}, "", `${projectCanonical(project)}${suffix}`);
   }
   renderProjectDashboard();
+  renderBreadcrumb();
   translateDocument();
 }
 
@@ -462,7 +566,9 @@ function splitMarkdownSections(markdown) {
     });
   });
   if (!headings.length)
-    return [{ level: 1, title: "Doküman", content: lines.join("\n") }];
+    return [
+      { level: 1, title: t("documents.generic"), content: lines.join("\n") },
+    ];
   return headings.map((heading, index) => ({
     ...heading,
     content: lines
@@ -475,7 +581,7 @@ function splitMarkdownSections(markdown) {
 function renderDocumentOutline() {
   const outline = $("documentOutline");
   outline.hidden = false;
-  outline.innerHTML = `<div class="document-outline-title">İçindekiler</div>${state.documentSections
+  outline.innerHTML = `<div class="document-outline-title">${t("documents.contents")}</div>${state.documentSections
     .map(
       (section, index) =>
         `<button type="button" class="outline-level-${section.level}${index === state.activeDocumentSection ? " active" : ""}" data-document-section="${index}" title="${escapeHtml(section.title)}">${escapeHtml(section.title)}</button>`,
@@ -523,7 +629,7 @@ async function openProjectDocumentPreview(index) {
   $("documentOutline").hidden = true;
   $("documentOutline").innerHTML = "";
   $("documentPreviewBody").innerHTML =
-    '<div class="document-loading">Doküman hazırlanıyor…</div>';
+    `<div class="document-loading">${t("documents.preparing")}</div>`;
   $("documentPreviewDialog").showModal();
   document.title = `${name} · ${currentProject()?.name || "Sprintmark"}`;
   const type = String(projectDocument.type || "");
@@ -539,7 +645,7 @@ async function openProjectDocumentPreview(index) {
   }
   const response = await fetch(projectDocument.url);
   if (!response.ok) {
-    $("documentPreviewBody").textContent = "Doküman yüklenemedi.";
+    $("documentPreviewBody").textContent = t("documents.loadError");
     return;
   }
   const content = await response.text();
@@ -581,7 +687,9 @@ async function uploadProjectDocuments(files) {
       body: data,
     });
     if (!response.ok)
-      throw new Error((await response.json()).error || "Doküman yüklenemedi.");
+      throw new Error(
+        (await response.json()).error || t("error.documentUpload"),
+      );
     project = (await response.json()).project;
     updateProjectInState(project);
   }
@@ -606,25 +714,25 @@ function renderProjectDashboard() {
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     .slice(0, 6);
   const sprintSection = sprints.length
-    ? `<section class="dashboard-section"><div class="section-head"><div><h3>Sprintler</h3><p>Planlanan ve aktif çalışma dönemleri</p></div><button data-project-action="sprint">Sprint oluştur</button></div><div class="dashboard-sprints">${sprints
+    ? `<section class="dashboard-section"><div class="section-head"><div><h3>${t("dashboard.sprints")}</h3><p>${t("dashboard.sprintsCaption")}</p></div><button data-project-action="sprint">${t("sprint.create")}</button></div><div class="dashboard-sprints">${sprints
         .map((sprint) => {
           const count = tasks.filter(
             (item) =>
               item.scheduled_for >= sprint.start_date &&
               item.scheduled_for <= sprint.end_date,
           ).length;
-          return `<article><strong>${escapeHtml(sprint.name)}</strong><span>${sprint.start_date} → ${sprint.end_date}</span><small>${sprintStatusName(sprint.status)} · ${count} iş</small></article>`;
+          return `<article><strong>${escapeHtml(sprint.name)}</strong><span>${sprint.start_date} → ${sprint.end_date}</span><small>${sprintStatusName(sprint.status)} · ${tp("count.task", count)}</small></article>`;
         })
         .join("")}</div></section>`
     : "";
-  const overview = `<section class="project-metrics"><article><span>Tamamlanma</span><strong>%${progress}</strong><small>${done}/${tasks.length} görev</small></article><article><span>Açık işler</span><strong>${open}</strong><small>Tamamlanmayı bekliyor</small></article><article><span>Backlog</span><strong>${backlog}</strong><small>Değerlendirilecek kayıt</small></article><article><span>Tarihsiz</span><strong>${undated}</strong><small>Takvime alınacak iş</small></article></section>${sprintSection}<section class="dashboard-section"><div class="section-head"><div><h3>Son güncellenen işler</h3><p>Güncelleme zamanına göre son kayıtlar</p></div></div><div class="recent-items">${recent
+  const overview = `<section class="project-metrics"><article><span>${t("dashboard.completed")}</span><strong>%${progress}</strong><small>${tp("dashboard.completedCaption", tasks.length, { done, total: tasks.length })}</small></article><article><span>${t("dashboard.open")}</span><strong>${open}</strong><small>${t("dashboard.openCaption")}</small></article><article><span>${t("dashboard.backlog")}</span><strong>${backlog}</strong><small>${t("dashboard.backlogCaption")}</small></article><article><span>${t("dashboard.unscheduled")}</span><strong>${undated}</strong><small>${t("dashboard.unscheduledCaption")}</small></article></section>${sprintSection}<section class="dashboard-section"><div class="section-head"><div><h3>${t("dashboard.recent")}</h3><p>${t("dashboard.recentCaption")}</p></div></div><div class="recent-items">${recent
     .map(
       (item) =>
         `<button data-key="${item.key}"><span><strong>${item.key}</strong>${escapeHtml(item.title)}</span><small>${item.completed_at ? `✓ ${escapeHtml(relativeElapsed(item.completed_at))} · ` : ""}${item.updated_at.slice(0, 10)} · ${statusName(item.status)}</small></button>`,
     )
     .join("")}</div></section>`;
   $("projectDashboard").innerHTML =
-    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p></div><div class="project-actions"><button data-project-action="calendar">Takvime git</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>Yeni iş oluştur</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>Sprint oluştur</button><button data-project-action="edit">Projeyi düzenle</button></div></section><nav class="project-tabs" aria-label="Proje bölümleri"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">Genel Bakış</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">Dokümanlar <span>${project.documents?.length || 0}</span></button></nav>${state.projectSection === "documents" ? renderProjectDocuments(project) : overview}`;
+    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p></div><div class="project-actions"><button data-project-action="calendar">${t("project.goCalendar")}</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>${t("project.createItem")}</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>${t("sprint.create")}</button><button data-project-action="edit">${t("project.edit")}</button></div></section><nav class="project-tabs" aria-label="${t("project.sectionsLabel")}"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">${t("breadcrumb.overview")}</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">${t("breadcrumb.documents")} <span>${project.documents?.length || 0}</span></button></nav>${state.projectSection === "documents" ? renderProjectDocuments(project) : overview}`;
 }
 function renderProjects() {
   renderProjectList();
@@ -639,13 +747,24 @@ function render() {
   renderBacklog();
   renderProjects();
   applyViewShell(state.view);
+  renderBreadcrumb();
   const projectItems = state.items.filter(
     (item) => item.project_key === state.selectedProject,
   );
+  const activeProjects = state.projects.filter(
+    (project) => project.status === "active",
+  ).length;
+  const archivedProjects = state.projects.filter(
+    (project) => project.status === "archived",
+  ).length;
+  const taskCount = projectItems.filter((item) => item.kind === "task").length;
+  const backlogCount = projectItems.filter(
+    (item) => item.kind === "backlog",
+  ).length;
   $("summary").textContent =
     state.view === "projects"
-      ? `${state.projects.filter((project) => project.status === "active").length} aktif proje · ${state.projects.filter((project) => project.status === "archived").length} arşiv`
-      : `${projectItems.filter((i) => i.kind === "task").length} takvim işi · ${projectItems.filter((i) => i.kind === "backlog").length} backlog`;
+      ? `${tp("summary.activeProjects", activeProjects)} · ${tp("summary.archivedProjects", archivedProjects)}`
+      : `${tp("summary.calendarItems", taskCount)} · ${tp("summary.backlogItems", backlogCount)}`;
   const activeProject = currentProject();
   $("newItem").disabled = activeProject?.status !== "active";
   $("sprintButton").disabled = activeProject?.status !== "active";
@@ -666,6 +785,32 @@ function setView(view, updateAddress = true) {
     history.pushState({ view }, "", target);
   }
   render();
+}
+function renderWorkItemChrome(item) {
+  $("detailTitle").textContent = item.title;
+  $("detailKey").textContent = item.key;
+  $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
+  $("detailStatus").textContent = statusName(item.status);
+  $("detailPriority").textContent = priorityName(item.priority);
+  $("detailTeam").textContent = teamName(item.team);
+  $("editStatus").innerHTML = workItemStatuses(item)
+    .map((status) => `<option value="${status}">${statusName(status)}</option>`)
+    .join("");
+  $("editStatus").value = item.status;
+  $("editTeam").value = item.team;
+  $("editPriority").value = item.priority || "";
+  $("editDate").value = item.scheduled_for || "";
+  $("editTime").value = item.scheduled_time || "";
+  $("toggleDone").textContent =
+    item.status === "done" ? t("work.reopen") : t("work.markDone");
+  $("toggleDone").classList.toggle("reopen", item.status === "done");
+  const completionFact = item.completed_at
+    ? `<dt>${t("work.completedAt")}</dt><dd class="completion-time"><time datetime="${escapeHtml(item.completed_at)}">${localDateTime(item.completed_at)}</time><small>${escapeHtml(relativeElapsed(item.completed_at))}</small></dd>`
+    : "";
+  $("facts").innerHTML =
+    `<dt>${t("work.project")}</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>${t("work.calendar")}</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>${t("work.priority")}</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>${t("work.created")}</dt><dd>${localDateTime(item.created_at)}</dd><dt>${t("work.updated")}</dt><dd>${localDateTime(item.updated_at)}</dd><dt>${t("work.legacyId")}</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
+  renderEvidence(item);
+  translateDocument();
 }
 async function openItem(key, push = true) {
   const response = await fetch(`/api/v1/work-items/${key}`);
@@ -691,49 +836,25 @@ async function openItem(key, push = true) {
     renderProjectOptions();
     render();
   }
-  $("detailTitle").textContent = item.title;
-  $("detailKey").textContent = item.key;
-  $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
-  $("detailStatus").textContent = statusName(item.status);
-  $("detailPriority").textContent = priorityName(item.priority);
-  $("detailTeam").textContent = teamName(item.team);
-  $("editStatus").innerHTML = workItemStatuses(item)
-    .map((status) => `<option value="${status}">${statusName(status)}</option>`)
-    .join("");
-  $("editStatus").value = item.status;
-  $("editTeam").value = item.team;
-  $("editPriority").value = item.priority || "";
-  $("editDate").value = item.scheduled_for || "";
-  $("editTime").value = item.scheduled_time || "";
-  $("toggleDone").textContent =
-    item.status === "done"
-      ? t("Yeniden aç")
-      : t("✓ Tamamlandı olarak işaretle");
-  $("toggleDone").classList.toggle("reopen", item.status === "done");
-  const completionFact = item.completed_at
-    ? `<dt>Tamamlanma</dt><dd class="completion-time"><time datetime="${escapeHtml(item.completed_at)}">${localDateTime(item.completed_at)}</time><small>${escapeHtml(relativeElapsed(item.completed_at))}</small></dd>`
-    : "";
-  $("facts").innerHTML =
-    `<dt>Proje</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>Takvim</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>Öncelik</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>Oluşturma</dt><dd>${localDateTime(item.created_at)}</dd><dt>Güncelleme</dt><dd>${localDateTime(item.updated_at)}</dd><dt>Eski kimlik</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
+  renderWorkItemChrome(item);
   $("detailBody").hidden = false;
   $("detailEditor").hidden = true;
   $("editorActions").hidden = true;
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
-  renderEvidence(item);
-  translateDocument();
   if (push) {
     state.returnPath = `${location.pathname}${location.search}`;
     history.pushState({ key: item.key }, "", canonical(item));
   }
   if (!$("detail").open) $("detail").showModal();
+  renderBreadcrumb();
   updateDocumentTitle(item);
   window.requestAnimationFrame(() => renderWorkItemViewer(item.body));
 }
 async function createDraft() {
   const response = await fetch("/api/v1/drafts", { method: "POST" });
   if (!response.ok)
-    throw new Error((await response.json()).error || "Taslak oluşturulamadı.");
+    throw new Error((await response.json()).error || t("error.draftCreate"));
   return response.json();
 }
 async function deleteDraft(id) {
@@ -741,7 +862,7 @@ async function deleteDraft(id) {
   await fetch(`/api/v1/drafts/${id}`, { method: "DELETE" }).catch(() => {});
 }
 async function uploadDraftFile(draftId, file, placement = "evidence") {
-  if (!draftId) throw new Error("Taslak oturumu bulunamadı.");
+  if (!draftId) throw new Error(t("error.draftMissing"));
   const data = new FormData();
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
   data.append("placement", placement);
@@ -751,11 +872,11 @@ async function uploadDraftFile(draftId, file, placement = "evidence") {
     body: data,
   });
   if (!response.ok)
-    throw new Error((await response.json()).error || "Dosya yüklenemedi.");
+    throw new Error((await response.json()).error || t("error.fileUpload"));
   return response.json();
 }
 async function uploadWorkItemFile(file, placement = "evidence") {
-  if (!state.selected) throw new Error("İş kaydı bulunamadı.");
+  if (!state.selected) throw new Error(t("error.itemMissing"));
   const data = new FormData();
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
   data.append("placement", placement);
@@ -765,7 +886,7 @@ async function uploadWorkItemFile(file, placement = "evidence") {
     { method: "POST", body: data },
   );
   if (!response.ok)
-    throw new Error((await response.json()).error || "Dosya yüklenemedi.");
+    throw new Error((await response.json()).error || t("error.fileUpload"));
   const result = await response.json();
   state.selected = result.record;
   state.items = state.items.map((item) =>
@@ -775,37 +896,37 @@ async function uploadWorkItemFile(file, placement = "evidence") {
 }
 
 function formatFileSize(size) {
-  if (!Number.isFinite(size)) return "Boyut bilinmiyor";
+  if (!Number.isFinite(size)) return t("file.unknownSize");
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 function fileExtension(name) {
-  return String(name || "Dosya")
+  return String(name || t("file.generic"))
     .split(".")
     .pop()
     .toLocaleUpperCase("tr-TR");
 }
 function renderFileCard(file, { removable = false } = {}) {
   const name = escapeHtml(
-    file.original_name || file.name || file.path || "Dosya",
+    file.original_name || file.name || file.path || t("file.generic"),
   );
   const type = String(file.type || "");
   const image = type.startsWith("image/");
   if (!file.exists && file.exists !== undefined)
-    return `<article class="file-card missing"><div class="file-symbol" aria-hidden="true">!</div><div class="file-details"><strong title="${name}">${name}</strong><span>Dosya bulunamadı</span></div></article>`;
+    return `<article class="file-card missing"><div class="file-symbol" aria-hidden="true">!</div><div class="file-details"><strong title="${name}">${name}</strong><span>${t("documents.missing")}</span></div></article>`;
   const url = escapeHtml(file.url || "");
   const downloadUrl = escapeHtml(
     file.download_url ||
       `${file.url}${file.url?.includes("?") ? "&" : "?"}download=1`,
   );
   const visual = image
-    ? `<button class="evidence-preview" type="button" data-lightbox-url="${url}" data-lightbox-alt="${name}" aria-label="${name} görselini büyüt"><img src="${url}" alt="${name}"></button>`
+    ? `<button class="evidence-preview" type="button" data-lightbox-url="${url}" data-lightbox-alt="${name}" aria-label="${t("file.enlarge", { name })}"><img src="${url}" alt="${name}"></button>`
     : `<div class="file-symbol" aria-hidden="true">${escapeHtml(fileExtension(file.original_name || file.name))}</div>`;
   const remove = removable
-    ? `<button class="evidence-remove" type="button" data-attachment-name="${escapeHtml(file.name)}" aria-label="${name} dosyasını kaldır">Kaldır</button>`
+    ? `<button class="evidence-remove" type="button" data-attachment-name="${escapeHtml(file.name)}" aria-label="${t("file.removeNamed", { name })}">${t("documents.remove")}</button>`
     : "";
-  return `<article class="file-card${image ? " image-file" : ""}">${visual}<div class="file-details"><strong title="${name}">${name}</strong><span>${escapeHtml(fileExtension(file.original_name || file.name))} · ${escapeHtml(formatFileSize(file.size))}</span><div class="file-actions"><a href="${url}" target="_blank" rel="noopener noreferrer">Aç</a><a href="${downloadUrl}" target="_blank" rel="noopener noreferrer">İndir</a>${remove}</div></div></article>`;
+  return `<article class="file-card${image ? " image-file" : ""}">${visual}<div class="file-details"><strong title="${name}">${name}</strong><span>${escapeHtml(fileExtension(file.original_name || file.name))} · ${escapeHtml(formatFileSize(file.size))}</span><div class="file-actions"><a href="${url}" target="_blank" rel="noopener noreferrer">${t("documents.open")}</a><a href="${downloadUrl}" target="_blank" rel="noopener noreferrer">${t("documents.download")}</a>${remove}</div></div></article>`;
 }
 function renderEvidence(item) {
   const managed = item.attachments
@@ -866,10 +987,7 @@ function finishWorkItemEdit(item = state.selected) {
   window.requestAnimationFrame(() => renderWorkItemViewer(item?.body || ""));
 }
 function cancelWorkItemEdit() {
-  if (
-    hasUnsavedWorkItem() &&
-    !window.confirm("Kaydedilmemiş içerik değişiklikleri silinsin mi?")
-  )
+  if (hasUnsavedWorkItem() && !window.confirm(t("validation.unsavedChanges")))
     return false;
   deleteDraft(state.editDraftId);
   state.editDraftId = null;
@@ -904,7 +1022,7 @@ async function saveWorkItemBody() {
     return;
   }
   if (!response.ok)
-    return alert((await response.json()).error || "İçerik kaydedilemedi.");
+    return alert((await response.json()).error || t("error.contentSave"));
   const updated = await response.json();
   state.editDraftId = null;
   state.selected = updated;
@@ -925,14 +1043,12 @@ async function patchSelectedWorkItem(patch) {
     body: JSON.stringify(patch),
   });
   if (response.status === 409) {
-    alert(
-      "İş başka bir işlemde güncellendi. Güncel bilgiler yüklenecek; değişikliği yeniden uygulayın.",
-    );
+    alert(t("work.conflictReload"));
     await openItem(state.selected.key, false);
     return null;
   }
   if (!response.ok) {
-    alert((await response.json()).error || "İş bilgileri güncellenemedi.");
+    alert((await response.json()).error || t("error.metadataUpdate"));
     return null;
   }
   const updated = await response.json();
@@ -1001,17 +1117,8 @@ async function load() {
       : "overview";
   if (state.projectSection === "documents") await loadProjectDocuments();
   renderProjectOptions();
-  $("buildMeta").textContent = `v${meta.version}`;
-  $("buildMeta").setAttribute("aria-label", `Sprintmark sürüm ${meta.version}`);
-  $("buildMeta").dataset.branch = meta.branch;
-  $("buildMeta").dataset.commit = meta.sha;
-  $("buildMeta").dataset.dirty = String(Boolean(meta.dirty));
-  const statuses = [...new Set(state.items.map((i) => i.status))];
-  $("statusFilter").innerHTML =
-    '<option value="">Tüm durumlar</option>' +
-    statuses
-      .map((s) => `<option value="${s}">${statusName(s)}</option>`)
-      .join("");
+  renderBuildMeta();
+  renderStatusOptions();
   const dates = filtered()
     .map((i) => i.scheduled_for)
     .filter(Boolean)
@@ -1026,14 +1133,6 @@ async function load() {
   if (route) openItem(route[1], false);
 }
 document.addEventListener("click", async (e) => {
-  const projectRoot = e.target.closest("[data-project-root]");
-  if (projectRoot) {
-    state.projectIndex = true;
-    state.view = "projects";
-    history.pushState({ view: "projects" }, "", "/projects/");
-    render();
-    return;
-  }
   const projectTab = e.target.closest("[data-project-tab]");
   if (projectTab) {
     await setProjectSection(projectTab.dataset.projectTab);
@@ -1065,8 +1164,7 @@ document.addEventListener("click", async (e) => {
   );
   if (projectDocumentRemove) {
     const project = currentProject();
-    if (!project || !globalThis.confirm("Bu proje dokümanı kaldırılsın mı?"))
-      return;
+    if (!project || !globalThis.confirm(t("validation.removeDocument"))) return;
     projectDocumentRemove.disabled = true;
     const response = await fetch(
       `/api/v1/projects/${project.uid}/documents/${projectDocumentRemove.dataset.projectDocumentRemove}`,
@@ -1074,7 +1172,7 @@ document.addEventListener("click", async (e) => {
     );
     if (!response.ok) {
       projectDocumentRemove.disabled = false;
-      return alert((await response.json()).error || "Doküman kaldırılamadı.");
+      return alert((await response.json()).error || t("error.documentRemove"));
     }
     updateProjectInState(await response.json());
     await loadProjectDocuments();
@@ -1118,7 +1216,7 @@ document.addEventListener("click", async (e) => {
     if (
       dialog === $("createDialog") &&
       hasUnsavedNewItem() &&
-      !window.confirm("Kaydedilmemiş yeni iş içeriği silinsin mi?")
+      !window.confirm(t("validation.unsavedItem"))
     )
       return;
     if (dialog === $("createDialog")) {
@@ -1153,7 +1251,7 @@ async function scheduleItem(uid, scheduledFor) {
   });
   if (!response.ok) {
     const failure = await response.json();
-    alert(failure.error || "Tarih güncellenemedi.");
+    alert(failure.error || t("error.dateUpdate"));
     await load();
     return;
   }
@@ -1229,7 +1327,7 @@ document.addEventListener("submit", async (event) => {
   );
   button.disabled = false;
   if (!response.ok)
-    return alert((await response.json()).error || "Doküman bağlanamadı.");
+    return alert((await response.json()).error || t("error.documentLink"));
   updateProjectInState(await response.json());
   await loadProjectDocuments();
   renderProjectDashboard();
@@ -1262,8 +1360,11 @@ function openProjectEdit() {
   form.elements.name.value = project.name;
   form.elements.description.value = project.description || "";
   form.elements.status.value = project.status;
-  $("projectImmutable").textContent =
-    `${project.key} · ${project.code} · UUID ${project.uid.slice(0, 8)} değişmez kimliklerdir.`;
+  $("projectImmutable").textContent = t("project.immutable", {
+    key: project.key,
+    code: project.code,
+    uid: project.uid.slice(0, 8),
+  });
   $("projectEditDialog").showModal();
 }
 function handleProjectAction(action) {
@@ -1307,11 +1408,8 @@ $("projectEditForm").onsubmit = async (event) => {
   });
   if (!response.ok) {
     const failure = await response.json();
-    if (response.status === 409)
-      return alert(
-        "Proje başka bir işlemde güncellendi. Sayfayı yenileyip tekrar deneyin.",
-      );
-    return alert(failure.error || "Proje güncellenemedi.");
+    if (response.status === 409) return alert(t("validation.projectChanged"));
+    return alert(failure.error || t("error.projectUpdate"));
   }
   const updated = await response.json();
   state.projects = state.projects.map((candidate) =>
@@ -1353,7 +1451,7 @@ function plannerMessage(text) {
 function selectSprintDay(date) {
   if (!state.sprintSelection.start) {
     state.sprintSelection.start = date;
-    plannerMessage(`${date} başlangıç seçildi; şimdi bitiş gününü seçin.`);
+    plannerMessage(t("sprint.endPrompt", { date }));
     render();
     return;
   }
@@ -1370,7 +1468,7 @@ $("sprintButton").onclick = () => $("sprintDialog").showModal();
 $("selectSprintDates").onclick = () => {
   state.sprintSelection = { active: true, start: null };
   $("sprintDialog").close();
-  plannerMessage("Sprint başlangıç gününü takvimden seçin.");
+  plannerMessage(t("sprint.startPrompt"));
   render();
 };
 $("sprintForm").onsubmit = async (e) => {
@@ -1394,11 +1492,8 @@ $("copyLink").onclick = async () => {
   await navigator.clipboard.writeText(
     new URL(canonical(state.selected), location.origin),
   );
-  $("copyLink").textContent = "Bağlantı kopyalandı";
-  setTimeout(
-    () => ($("copyLink").textContent = "Kalıcı bağlantıyı kopyala"),
-    1400,
-  );
+  $("copyLink").textContent = t("work.linkCopied");
+  setTimeout(() => ($("copyLink").textContent = t("work.copyLink")), 1400);
 };
 $("editWorkItem").onclick = startWorkItemEdit;
 $("editMetadata").onsubmit = async (event) => {
@@ -1431,7 +1526,7 @@ $("cancelWorkItemEdit").onclick = cancelWorkItemEdit;
 $("saveWorkItem").onclick = saveWorkItemBody;
 $("copyDraft").onclick = async () => {
   await navigator.clipboard.writeText(state.detailEditor?.getMarkdown() || "");
-  $("copyDraft").textContent = "Taslak kopyalandı";
+  $("copyDraft").textContent = t("work.draftCopied");
 };
 $("reloadWorkItem").onclick = async () => {
   if (!state.selected) return;
@@ -1449,13 +1544,12 @@ $("detail").addEventListener("close", () => {
   state.detailDirty = false;
   if (location.pathname.startsWith("/work-items/"))
     history.pushState({}, "", state.returnPath || "/");
+  state.selected = null;
+  renderBreadcrumb();
   updateDocumentTitle();
 });
 $("createDialog").addEventListener("cancel", (event) => {
-  if (
-    hasUnsavedNewItem() &&
-    !window.confirm("Kaydedilmemiş yeni iş içeriği silinsin mi?")
-  ) {
+  if (hasUnsavedNewItem() && !window.confirm(t("validation.unsavedItem"))) {
     event.preventDefault();
     return;
   }
@@ -1474,8 +1568,14 @@ $("newItem").onclick = openCreateDialog;
 $("localeSelect").onchange = (event) => {
   window.localStorage.setItem("sprintmark-locale", event.target.value);
   document.documentElement.lang = event.target.value;
+  renderProjectOptions();
+  renderStatusOptions();
+  renderBuildMeta();
   render();
-  translateDocument();
+  if ($("detail").open && state.selected) renderWorkItemChrome(state.selected);
+  if ($("documentPreviewDialog").open && state.documentSections.length)
+    renderDocumentSection(state.activeDocumentSection);
+  updateDocumentTitle($("detail").open ? state.selected : null);
 };
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
@@ -1545,7 +1645,7 @@ $("attachments").addEventListener("click", async (event) => {
   }
   const remove = event.target.closest("[data-attachment-name]");
   if (!remove || !state.selected) return;
-  if (!globalThis.confirm("Bu kanıt dosyası kaldırılsın mı?")) return;
+  if (!globalThis.confirm(t("validation.removeEvidence"))) return;
   remove.disabled = true;
   const response = await fetch(
     `/api/v1/work-items/${state.selected.uid}/attachments/${encodeURIComponent(remove.dataset.attachmentName)}`,
@@ -1556,7 +1656,7 @@ $("attachments").addEventListener("click", async (event) => {
   );
   if (!response.ok) {
     remove.disabled = false;
-    return alert((await response.json()).error || "Dosya kaldırılamadı.");
+    return alert((await response.json()).error || t("error.evidenceRemove"));
   }
   await openItem(state.selected.key, false);
 });
@@ -1646,5 +1746,5 @@ enableFileDrop("createEvidencePasteZone", (file, placement) =>
 load().catch((error) => {
   document.body.classList.remove("app-loading");
   document.querySelector("main").innerHTML =
-    `<section class="not-found"><h1>Uygulama yüklenemedi</h1><p>${escapeHtml(error.message)}</p></section>`;
+    `<section class="not-found"><h1>${t("app.loadError")}</h1><p>${escapeHtml(error.message)}</p></section>`;
 });

@@ -12,11 +12,10 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
     readFile(resolve(publicRoot, "styles.css"), "utf8"),
     readFile(resolve(publicRoot, "sprintmark-mark.svg"), "utf8"),
   ]);
-  assert.match(html, /data-view="projects"/);
   assert.match(html, /class="brand-lockup"/);
   assert.match(html, /sprintmark-mark\.svg/);
-  assert.match(html, /class="nav projects-home"/);
-  assert.equal((html.match(/data-view="projects"/g) || []).length, 1);
+  assert.match(html, /id="breadcrumb" class="breadcrumb"/);
+  assert.doesNotMatch(html, /class="nav projects-home"/);
   assert.match(html, /id="createEditor"/);
   assert.match(html, /id="editStatus"/);
   assert.match(html, /id="editPriority"/);
@@ -63,8 +62,9 @@ test("browser title follows the open work item and returns to the project", asyn
   );
   assert.match(
     app,
-    /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\);\s+updateDocumentTitle\(\)/,
+    /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\)/,
   );
+  assert.match(app, /state\.selected = null;\s+renderBreadcrumb\(\)/);
 });
 
 test("calendar overflow buttons expand and collapse every item in a day", async () => {
@@ -93,7 +93,7 @@ test("the rich viewer replaces the legacy Markdown renderer so tables can render
   assert.match(app, /completed_at/);
   assert.match(app, /relativeElapsed/);
   assert.match(app, /patchSelectedWorkItem/);
-  assert.match(app, /`v\$\{meta\.version\}`/);
+  assert.match(app, /`v\$\{state\.meta\.version\}`/);
   assert.doesNotMatch(app, /çalışma ağacı kirli/);
 });
 
@@ -138,11 +138,11 @@ test("project documents render as heading-based documentation pages", async () =
   assert.match(app, /projectDocumentUpload/);
   assert.match(
     app,
-    /data-project-document-preview="\$\{document\.index\}">Aç<\/button>/,
+    /data-project-document-preview="\$\{document\.index\}">\$\{t\("documents\.open"\)\}<\/button>/,
   );
   assert.match(
     app,
-    /href="\$\{escapeHtml\(document\.url\)\}"[^>]*>Önizle<\/a>/,
+    /href="\$\{escapeHtml\(document\.url\)\}"[^>]*>\$\{t\("documents\.preview"\)\}<\/a>/,
   );
   assert.match(html, /id="documentPreviewOpen"/);
   assert.match(html, />Dosyayı önizle<\/a/);
@@ -179,12 +179,12 @@ test("the projects root is distinct from a selected project detail", async () =>
     readFile(resolve(publicRoot, "app.js"), "utf8"),
     readFile(resolve(publicRoot, "styles.css"), "utf8"),
   ]);
-  assert.match(html, /data-project-root/);
+  assert.match(html, /id="breadcrumb"/);
+  assert.doesNotMatch(html, /data-project-root/);
   assert.match(app, /projectIndex:/);
-  assert.match(
-    app,
-    /history\.pushState\(\{ view: "projects" \}, "", "\/projects\/"\)/,
-  );
+  assert.match(app, /href: "\/projects\/"/);
+  assert.match(app, /function renderBreadcrumb\(\)/);
+  assert.match(app, /aria-current="page"/);
   assert.match(app, /\$\("projectDashboard"\)\.hidden = state\.projectIndex/);
   assert.match(
     app,
