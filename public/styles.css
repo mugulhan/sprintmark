@@ -159,6 +159,37 @@ main {
   margin: 18px auto 36px;
   padding: 0 16px;
 }
+body.app-loading main {
+  min-height: 620px;
+}
+body.app-loading main > section {
+  display: none !important;
+}
+body.app-loading main::before {
+  content: "";
+  display: block;
+  height: min(620px, calc(100vh - 190px));
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, transparent, #ffffffaa, transparent) -420px 0 / 420px
+      100% no-repeat,
+    linear-gradient(#e8eef4 0 0) 24px 28px / 230px 24px no-repeat,
+    linear-gradient(#edf2f7 0 0) 24px 68px / calc(100% - 48px) 12px no-repeat,
+    linear-gradient(#edf2f7 0 0) 24px 96px / calc(82% - 48px) 12px no-repeat,
+    #fff;
+  animation: loading-sheen 1.2s linear infinite;
+}
+@keyframes loading-sheen {
+  to {
+    background-position:
+      calc(100% + 420px) 0,
+      24px 28px,
+      24px 68px,
+      24px 96px;
+  }
+}
 .calendar-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;

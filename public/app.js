@@ -1,5 +1,8 @@
 import { locale, t, translateDocument } from "./i18n.js";
 
+const initialView = location.pathname.startsWith("/projects")
+  ? "projects"
+  : "calendar";
 const state = {
   projects: [],
   selectedProject: null,
@@ -10,7 +13,7 @@ const state = {
   activeDocumentSection: 0,
   items: [],
   sprints: [],
-  view: "calendar",
+  view: initialView,
   month: new Date(),
   selected: null,
   fileReferences: [],
@@ -31,6 +34,18 @@ const state = {
   returnPath: "/",
 };
 const $ = (id) => document.getElementById(id);
+function applyViewShell(view) {
+  document.body.dataset.view = view;
+  $("calendarView").hidden = view !== "calendar";
+  $("backlogView").hidden = view !== "backlog";
+  $("projectsView").hidden = view !== "projects";
+  document
+    .querySelectorAll(".nav")
+    .forEach((nav) =>
+      nav.classList.toggle("active", nav.dataset.view === view),
+    );
+}
+applyViewShell(state.view);
 const escapeHtml = (v) =>
   String(v ?? "").replace(
     /[&<>\"]/g,
@@ -604,9 +619,7 @@ function render() {
   renderCalendar();
   renderBacklog();
   renderProjects();
-  $("calendarView").hidden = state.view !== "calendar";
-  $("backlogView").hidden = state.view !== "backlog";
-  $("projectsView").hidden = state.view !== "projects";
+  applyViewShell(state.view);
   const projectItems = state.items.filter(
     (item) => item.project_key === state.selectedProject,
   );
@@ -955,15 +968,22 @@ async function load() {
     meta.default_locale ||
     "en";
   $("localeSelect").value = document.documentElement.lang;
-  const requestedProject = new window.URLSearchParams(location.search).get(
-    "project",
-  );
+  const projectRoute = location.pathname.match(/^\/projects\/(PRJ-\d{3})/i);
+  const requestedProject =
+    projectRoute?.[1]?.toUpperCase() ||
+    new window.URLSearchParams(location.search).get("project");
   const rememberedProject = window.localStorage.getItem("work-tracker-project");
   state.selectedProject =
     state.projects.find((project) => project.key === requestedProject)?.key ||
     state.projects.find((project) => project.key === rememberedProject)?.key ||
     state.projects.find((project) => project.status === "active")?.key ||
     state.projects[0]?.key;
+  state.projectSection =
+    state.view === "projects" &&
+    new window.URLSearchParams(location.search).get("tab") === "documents"
+      ? "documents"
+      : "overview";
+  if (state.projectSection === "documents") await loadProjectDocuments();
   renderProjectOptions();
   $("buildMeta").textContent = `v${meta.version}`;
   $("buildMeta").setAttribute("aria-label", `Sprintmark sürüm ${meta.version}`);
@@ -983,22 +1003,7 @@ async function load() {
   if (dates.length) state.month = new Date(`${dates.at(-1)}T12:00:00`);
   render();
   translateDocument();
-  const projectRoute = location.pathname.match(/^\/projects\/(PRJ-\d{3})/i);
-  if (projectRoute) {
-    const project = state.projects.find(
-      (candidate) => candidate.key === projectRoute[1].toUpperCase(),
-    );
-    if (project) state.selectedProject = project.key;
-    state.projectSection =
-      new window.URLSearchParams(location.search).get("tab") === "documents"
-        ? "documents"
-        : "overview";
-    if (state.projectSection === "documents") await loadProjectDocuments();
-    renderProjectOptions();
-    setView("projects", false);
-  } else if (location.pathname === "/projects") {
-    setView("projects", false);
-  }
+  document.body.classList.remove("app-loading");
   const route = location.pathname.match(
     /^\/work-items\/([A-Z][A-Z0-9]{1,7}-(?:\d{4}[A-Z]?|BL-\d{3}))/i,
   );
@@ -1619,6 +1624,7 @@ enableFileDrop("createEvidencePasteZone", (file, placement) =>
   uploadDraftFile(state.createDraftId, file, placement),
 );
 load().catch((error) => {
+  document.body.classList.remove("app-loading");
   document.querySelector("main").innerHTML =
     `<section class="not-found"><h1>Uygulama yüklenemedi</h1><p>${escapeHtml(error.message)}</p></section>`;
 });

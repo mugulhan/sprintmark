@@ -143,3 +143,19 @@ test("project documents render as heading-based documentation pages", async () =
   assert.match(styles, /\.document-outline \.outline-level-4/);
   assert.match(styles, /\.document-page/);
 });
+
+test("direct project routes avoid rendering the calendar before project data", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /<body class="app-loading" data-view="calendar">/);
+  assert.match(html, /location\.pathname\.startsWith\("\/projects"\)/);
+  assert.match(app, /const initialView = location\.pathname\.startsWith/);
+  assert.match(app, /function applyViewShell\(view\)/);
+  assert.match(app, /view: initialView/);
+  assert.match(app, /document\.body\.classList\.remove\("app-loading"\)/);
+  assert.match(styles, /body\.app-loading main > section/);
+  assert.match(styles, /@keyframes loading-sheen/);
+});
