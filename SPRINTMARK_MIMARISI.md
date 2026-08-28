@@ -2,7 +2,7 @@
 
 ## 1. Amaç ve kapsam
 
-Sprintmark; proje, sprint, takvim, backlog ve iş kayıtlarını tek kullanıcıya yönelik yerel bir çalışma alanında yöneten, veritabanı gerektirmeyen bir iş takip uygulamasıdır. Uygulama Node.js üzerinde çalışır ve kalıcı verileri okunabilir YAML/Markdown dosyalarında tutar.
+Sprintmark; proje, sprint, takvim, backlog ve iş kayıtlarını kimlikli kullanıcılar ve ekiplerle yöneten, veritabanı gerektirmeyen bir iş takip uygulamasıdır. Uygulama Node.js üzerinde çalışır ve kalıcı verileri okunabilir YAML/Markdown dosyalarında tutar.
 
 Temel tasarım hedefleri:
 
@@ -26,7 +26,7 @@ Tarayıcı
             └─ Dosya tabanlı çalışma alanı
 ```
 
-Uygulama varsayılan olarak `127.0.0.1:4310` üzerinde çalışır. Kimlik doğrulama katmanı bulunmadığı için doğrudan genel internete açılmamalıdır.
+Uygulama varsayılan olarak `127.0.0.1:4310` üzerinde çalışır. Yerel geliştirme profili yalnız loopback adresinde kullanılabilir; ekip erişimi davetli Google OIDC kimlikleri ve sunucu taraflı oturumlarla sağlanır. Loopback dışındaki dağıtımlar HTTPS ve Google modu gerektirir.
 
 ## 3. Uygulama katmanları
 
@@ -50,6 +50,8 @@ Arayüz tek sayfa uygulaması davranışı gösterir. Canonical rotalar History 
 - Dosya yükleme limitlerini ve türlerini uygulama
 - Canonical proje ve iş kaydı rotalarını koruma
 - Güvenli inline önizleme ve zorunlu indirme yanıtları üretme
+- İlk çalıştırmada loopback ile sınırlı kurulum API'sini sunma; kimlik modu seçildikten sonra bu yüzeyi kalıcı olarak kapatma
+- Google OIDC, yerel geliştirici oturumu, CSRF ve rol/yetki kontrollerini uygulama
 
 Başlıca API grupları:
 
@@ -58,6 +60,7 @@ Başlıca API grupları:
 - `/api/v1/work-items/{uid}/activities`
 - `/api/v1/sprints`
 - `/api/v1/drafts`
+- `/api/v1/session`, `/api/v1/setup`, `/api/v1/logout`
 - Proje dokümanı ve iş kaydı eki alt uçları
 
 ### 3.3 Alan ve kalıcılık katmanı

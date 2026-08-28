@@ -8,6 +8,7 @@ const initialView = location.pathname.startsWith("/projects")
 const state = {
   session: null,
   authMode: null,
+  setup: null,
   users: [],
   teams: [],
   notifications: [],
@@ -62,17 +63,183 @@ async function apiFetch(input, init = {}) {
 function renderLogin(authMode = state.authMode || "google") {
   state.session = null;
   state.authMode = authMode;
+  const local = authMode === "local";
+  renderAccessView(
+    `
+    <div class="access-panel access-login">
+      <div class="access-story">
+        <span class="access-kicker">${t("auth.workspaceKicker")}</span>
+        <h2>${t("auth.workspaceTitle")}</h2>
+        <p>${t("auth.workspaceDescription")}</p>
+        <ul class="access-benefits">
+          <li><strong>${t("auth.benefitPlanTitle")}</strong><span>${t("auth.benefitPlanText")}</span></li>
+          <li><strong>${t("auth.benefitHistoryTitle")}</strong><span>${t("auth.benefitHistoryText")}</span></li>
+          <li><strong>${t("auth.benefitDocsTitle")}</strong><span>${t("auth.benefitDocsText")}</span></li>
+        </ul>
+      </div>
+      <div class="access-action">
+        ${accessLocaleControl()}
+        <img src="/sprintmark-mark.svg" alt="" width="58" height="58" />
+        <span class="access-kicker">${local ? t("auth.localMode") : t("auth.googleMode")}</span>
+        <h1>${t("auth.welcome")}</h1>
+        <p>${t(local ? "auth.localDescription" : "auth.googleDescription")}</p>
+        <a class="primary button-link access-primary" href="${local ? "/auth/local/start" : "/auth/google/start"}">${t(local ? "auth.continueLocal" : "auth.continueGoogle")}</a>
+        <small class="access-security">${t(local ? "auth.localSecurity" : "auth.googleSecurity")}</small>
+      </div>
+    </div>`,
+    "login",
+  );
+}
+
+function accessLocaleControl() {
+  return `<label class="access-locale"><span>${t("locale.label")}</span><select data-access-locale><option value="tr"${locale() === "tr" ? " selected" : ""}>TR</option><option value="en"${locale() === "en" ? " selected" : ""}>EN</option></select></label>`;
+}
+
+function renderAccessView(content, kind) {
   document.body.classList.add("auth-required-view");
+  document.body.dataset.access = kind;
   $("accountMenu").hidden = true;
   $("notificationPanel").hidden = true;
+  for (const id of ["calendarView", "backlogView", "projectsView"])
+    $(id).hidden = true;
+  const access = $("accessView");
+  access.innerHTML = content;
+  access.hidden = false;
+  access
+    .querySelector("[data-access-locale]")
+    ?.addEventListener("change", (event) => {
+      window.localStorage.setItem("sprintmark-locale", event.target.value);
+      document.documentElement.lang = event.target.value;
+      if (state.setup) renderSetup(state.setup);
+      else renderLogin(state.authMode);
+    });
+  document.documentElement.classList.add("i18n-ready");
   document.body.classList.remove("app-loading");
-  const local = authMode === "local";
-  document.querySelector("main").innerHTML =
-    `<section class="not-found auth-required"><h1>Sprintmark</h1><p>${t(local ? "auth.localDescription" : "auth.googleDescription")}</p><a class="primary button-link" href="${local ? "/auth/local/start" : "/auth/google/start"}">${t(local ? "auth.continueLocal" : "auth.continueGoogle")}</a></section>`;
+}
+
+function renderSetup(metadata) {
+  state.setup = metadata;
+  const redirectUri = escapeHtml(metadata.redirect_uri);
+  const defaults = metadata.defaults || {};
+  renderAccessView(
+    `
+    <div class="access-panel setup-wizard">
+      <div class="access-story setup-story">
+        <span class="access-kicker">${t("setup.firstRun")}</span>
+        <h2>${t("setup.storyTitle")}</h2>
+        <p>${t("setup.storyDescription")}</p>
+        <ol class="setup-steps" aria-label="${t("setup.stepsLabel")}">
+          <li class="active"><span>1</span><div><strong>${t("setup.stepMode")}</strong><small>${t("setup.stepModeText")}</small></div></li>
+          <li><span>2</span><div><strong>${t("setup.stepIdentity")}</strong><small>${t("setup.stepIdentityText")}</small></div></li>
+          <li><span>3</span><div><strong>${t("setup.stepReady")}</strong><small>${t("setup.stepReadyText")}</small></div></li>
+        </ol>
+        <div class="setup-safe"><strong>${t("setup.safeTitle")}</strong><p>${t("setup.safeText")}</p></div>
+      </div>
+      <div class="access-action setup-action">
+        ${accessLocaleControl()}
+        <div class="setup-heading"><span class="access-kicker">${t("setup.configure")}</span><h1>${t("setup.title")}</h1><p>${t("setup.description")}</p></div>
+        <form id="setupForm" class="setup-form">
+          <fieldset class="mode-picker">
+            <legend>${t("setup.modeLegend")}</legend>
+            <label class="mode-option"><input type="radio" name="mode" value="local" checked /><span><strong>${t("setup.localTitle")}</strong><small>${t("setup.localText")}</small><em>${t("setup.recommended")}</em></span></label>
+            <label class="mode-option"><input type="radio" name="mode" value="google" /><span><strong>${t("setup.googleTitle")}</strong><small>${t("setup.googleText")}</small></span></label>
+          </fieldset>
+          <div data-setup-panel="local" class="setup-fields">
+            <label><span>${t("setup.localName")}</span><input name="local_name" autocomplete="name" required value="${escapeHtml(defaults.local_name || "Local user")}" /></label>
+            <label><span>${t("setup.localEmail")}</span><input name="local_email" type="email" autocomplete="email" required value="${escapeHtml(defaults.local_email || "local@sprintmark.invalid")}" /></label>
+            <p class="field-help">${t("setup.localHelp")}</p>
+          </div>
+          <div data-setup-panel="google" class="setup-fields" hidden>
+            <a class="setup-console-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">${t("setup.openGoogleConsole")} <span aria-hidden="true">↗</span></a>
+            <label><span>${t("setup.clientId")}</span><input name="client_id" autocomplete="off" placeholder="123…apps.googleusercontent.com" /></label>
+            <label><span>${t("setup.clientSecret")}</span><span class="secret-field"><input name="client_secret" type="password" autocomplete="new-password" /><button type="button" data-toggle-secret aria-label="${t("setup.toggleSecret")}">${t("setup.show")}</button></span></label>
+            <label><span>${t("setup.adminEmails")}</span><input name="admin_emails" autocomplete="email" placeholder="owner@example.com" /></label>
+            <div class="redirect-callout"><span>${t("setup.redirectUri")}</span><code>${redirectUri}</code><button type="button" data-copy-redirect>${t("setup.copy")}</button></div>
+            <p class="field-help">${t("setup.googleHelp")}</p>
+          </div>
+          <input type="hidden" name="timezone" value="${escapeHtml(defaults.timezone || "Europe/Istanbul")}" />
+          <input type="hidden" name="locale" value="${locale()}" />
+          <div id="setupMessage" class="setup-message" role="status" aria-live="polite"></div>
+          <button class="primary setup-submit" type="submit">${t("setup.save")}</button>
+          <small class="setup-persist">${t("setup.persist")}</small>
+        </form>
+      </div>
+    </div>`,
+    "setup",
+  );
+  const form = $("setupForm");
+  const updateMode = () => {
+    const mode = new FormData(form).get("mode");
+    form.querySelectorAll("[data-setup-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.setupPanel !== mode;
+      panel.querySelectorAll("input").forEach((input) => {
+        input.required =
+          (mode === "google" &&
+            ["client_id", "client_secret", "admin_emails"].includes(
+              input.name,
+            )) ||
+          (mode === "local" &&
+            ["local_name", "local_email"].includes(input.name));
+      });
+    });
+  };
+  form
+    .querySelectorAll('input[name="mode"]')
+    .forEach((input) => input.addEventListener("change", updateMode));
+  form
+    .querySelector("[data-toggle-secret]")
+    .addEventListener("click", (event) => {
+      const input = form.elements.client_secret;
+      input.type = input.type === "password" ? "text" : "password";
+      event.currentTarget.textContent =
+        input.type === "password" ? t("setup.show") : t("setup.hide");
+    });
+  form
+    .querySelector("[data-copy-redirect]")
+    .addEventListener("click", async () => {
+      await navigator.clipboard.writeText(metadata.redirect_uri);
+      $("setupMessage").textContent = t("setup.copied");
+    });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector('[type="submit"]');
+    const message = $("setupMessage");
+    submit.disabled = true;
+    submit.textContent = t("setup.saving");
+    message.className = "setup-message";
+    message.textContent = "";
+    const values = Object.fromEntries(new FormData(form));
+    try {
+      const response = await nativeFetch("/api/v1/setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Setup-Token": metadata.setup_token,
+        },
+        body: JSON.stringify(values),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || t("setup.failed"));
+      message.className = "setup-message success";
+      message.textContent = t("setup.complete");
+      window.setTimeout(() => location.assign(result.login_url), 350);
+    } catch (error) {
+      message.className = "setup-message error";
+      message.textContent = error.message;
+      submit.disabled = false;
+      submit.textContent = t("setup.save");
+    }
+  });
+  updateMode();
 }
 function renderAccount() {
   if (!state.session?.user) return;
   document.body.classList.remove("auth-required-view");
+  delete document.body.dataset.access;
+  state.setup = null;
+  $("accessView").hidden = true;
+  applyViewShell(state.view);
+  document.documentElement.classList.add("i18n-ready");
   $("accountMenu").hidden = false;
   $("accountName").textContent = state.session.user.display_name;
   $("notificationCount").textContent = String(
@@ -100,7 +267,6 @@ function applyViewShell(view) {
 }
 applyViewShell(state.view);
 translateDocument();
-document.documentElement.classList.add("i18n-ready");
 const escapeHtml = (v) =>
   String(v ?? "").replace(
     /[&<>\"]/g,
@@ -1334,6 +1500,14 @@ async function load() {
   const sessionResponse = await apiFetch("/api/v1/session");
   if (!sessionResponse.ok) {
     const error = await sessionResponse.json().catch(() => ({}));
+    if (sessionResponse.status === 428 && error.error === "setup_required") {
+      const setupResponse = await nativeFetch(
+        error.setup_url || "/api/v1/setup",
+      );
+      if (!setupResponse.ok) throw new Error(t("setup.unavailable"));
+      renderSetup(await setupResponse.json());
+      return;
+    }
     renderLogin(error.auth_mode || "google");
     return;
   }
@@ -2121,7 +2295,8 @@ $("logoutButton").addEventListener("click", async () => {
   renderLogin();
 });
 load().catch((error) => {
-  document.body.classList.remove("app-loading");
-  document.querySelector("main").innerHTML =
-    `<section class="not-found"><h1>${t("app.loadError")}</h1><p>${escapeHtml(error.message)}</p></section>`;
+  renderAccessView(
+    `<section class="not-found"><h1>${t("app.loadError")}</h1><p>${escapeHtml(error.message)}</p><button type="button" onclick="location.reload()">${t("setup.retry")}</button></section>`,
+    "error",
+  );
 });

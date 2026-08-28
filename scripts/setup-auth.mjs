@@ -1,99 +1,22 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { Writable } from "node:stream";
 import { createInterface } from "node:readline/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { authConfigFromEnv } from "../src/auth.mjs";
+import {
+  buildAuthEnvironment,
+  normalizeEmails,
+  serializeEnvironment,
+  writeAuthEnvironment,
+} from "../src/setup-config.mjs";
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ORDER = [
-  "SPRINTMARK_AUTH_MODE",
-  "CLIENT_ID",
-  "CLIENT_SECRET",
-  "BASE_URL",
-  "SESSION_SECRET",
-  "BOOTSTRAP_ADMIN_EMAILS",
-  "SPRINTMARK_DATA_DIR",
-  "SPRINTMARK_TIMEZONE",
-  "SPRINTMARK_DEFAULT_LOCALE",
-  "SPRINTMARK_HOST",
-  "SPRINTMARK_PORT",
-];
+export { buildAuthEnvironment, normalizeEmails, serializeEnvironment };
 
 function clean(value) {
   const result = String(value || "").trim();
   if (/\r|\n/.test(result))
     throw new Error("Configuration values cannot contain newlines");
   return result;
-}
-
-export function normalizeEmails(value) {
-  const emails = [
-    ...new Set(
-      clean(value)
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  ];
-  if (!emails.length || emails.some((email) => !EMAIL.test(email)))
-    throw new Error(
-      "At least one valid bootstrap administrator email is required",
-    );
-  return emails.join(",");
-}
-
-export function buildAuthEnvironment({
-  mode = "google",
-  clientId = "",
-  clientSecret = "",
-  baseUrl = "http://127.0.0.1:4310",
-  sessionSecret = randomBytes(48).toString("base64url"),
-  adminEmails = "",
-  dataDir = "./data",
-  timezone = "Europe/Istanbul",
-  locale = "en",
-  host = "127.0.0.1",
-  port = "4310",
-} = {}) {
-  const normalizedMode = clean(mode).toLowerCase();
-  if (!new Set(["google", "local"]).has(normalizedMode))
-    throw new Error("Auth mode must be google or local");
-  const environment = {
-    SPRINTMARK_AUTH_MODE: normalizedMode,
-    CLIENT_ID: normalizedMode === "google" ? clean(clientId) : "",
-    CLIENT_SECRET: normalizedMode === "google" ? clean(clientSecret) : "",
-    BASE_URL: clean(baseUrl).replace(/\/$/, ""),
-    SESSION_SECRET: clean(sessionSecret),
-    BOOTSTRAP_ADMIN_EMAILS:
-      normalizedMode === "google" ? normalizeEmails(adminEmails) : "",
-    SPRINTMARK_DATA_DIR: clean(dataDir) || "./data",
-    SPRINTMARK_TIMEZONE: clean(timezone) || "Europe/Istanbul",
-    SPRINTMARK_DEFAULT_LOCALE: clean(locale) || "en",
-    SPRINTMARK_HOST: clean(host) || "127.0.0.1",
-    SPRINTMARK_PORT: clean(port) || "4310",
-  };
-  const base = new URL(environment.BASE_URL);
-  authConfigFromEnv(
-    environment.SPRINTMARK_HOST,
-    Number(environment.SPRINTMARK_PORT),
-    environment,
-  );
-  if (
-    normalizedMode === "google" &&
-    !environment.CLIENT_ID.endsWith(".apps.googleusercontent.com")
-  )
-    throw new Error("CLIENT_ID must be a Google Web application client ID");
-  return {
-    environment,
-    origin: base.origin,
-    redirectUri: `${environment.BASE_URL}/auth/google/callback`,
-  };
-}
-
-export function serializeEnvironment(environment) {
-  return `${ORDER.map((key) => `${key}=${JSON.stringify(environment[key] || "")}`).join("\n")}\n`;
 }
 
 function parseOptions(argv) {
@@ -194,12 +117,17 @@ async function run() {
       const overwrite = await ask(`Overwrite ${output} if it exists?`, "no");
       force = /^y(?:es)?$/i.test(overwrite);
     }
-    await mkdir(dirname(output), { recursive: true });
-    await writeFile(output, serializeEnvironment(built.environment), {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: force ? "w" : "wx",
-    });
+    if (!force) {
+      const { access } = await import("node:fs/promises");
+      await access(output)
+        .then(() => {
+          throw new Error(`${output} already exists; use --force to update it`);
+        })
+        .catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+    }
+    await writeAuthEnvironment(output, built.environment);
     process.stdout.write(
       `\nAuthentication configuration written to ${output}\n`,
     );

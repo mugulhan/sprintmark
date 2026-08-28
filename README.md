@@ -21,9 +21,11 @@ npm ci
 npm start
 ```
 
-Open <http://127.0.0.1:4310> and continue with the explicit loopback-local profile. The first workspace is empty; create a project in the UI or run `npm run seed:demo`.
+Open <http://127.0.0.1:4310>. On a fresh clone, the browser opens a first-run setup wizard. Choose the loopback-only local profile for a quick evaluation, or enter a Google Web OAuth client for invited team access. The wizard validates the values, generates the session secret, and writes the git-ignored `.env.local` file; no manual file editing or restart is required.
 
-For Google sign-in, create a Google Web OAuth client once and run the guided setup. The wizard validates the configuration, generates a session secret and writes an ignored `.env.local` file:
+The first workspace is empty; create a project in the UI or run `npm run seed:demo`.
+
+For Google sign-in, create a Google Web OAuth client once. The browser wizard shows the exact callback URI to copy into Google Cloud. The terminal wizard remains available for automation and headless environments:
 
 ```bash
 npm run setup:auth
@@ -31,6 +33,8 @@ npm start
 ```
 
 See [Google sign-in setup](docs/GOOGLE_AUTH_SETUP.md) for the exact Cloud Console redirect URI, test-user rules, non-interactive setup and production deployment guidance.
+
+The browser setup endpoint is intentionally available only on `127.0.0.1`, `localhost`, or `::1`, only before authentication has been configured, and is protected by a short-lived one-time setup token. It is never exposed as a remote production configurator.
 
 ## Docker
 

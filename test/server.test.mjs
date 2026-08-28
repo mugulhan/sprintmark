@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -136,6 +136,120 @@ test("local developer sign-out remains signed out until an explicit sign-in", as
     headers: { cookie: sessionCookie },
   });
   assert.equal(afterLogout.status, 401);
+});
+
+test("first-run setup is loopback-only, CSRF-bound and activates local auth", async (context) => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-first-run-"));
+  const configPath = join(workspace, ".env.local");
+  const server = createWorkTrackerServer({
+    workspace,
+    setup: {
+      enabled: true,
+      host: "127.0.0.1",
+      port: 4310,
+      baseUrl: "http://127.0.0.1:4310",
+      configPath,
+      dataDir: "./data",
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const session = await fetch(`${base}/api/v1/session`);
+  assert.equal(session.status, 428);
+  assert.deepEqual(await session.json(), {
+    error: "setup_required",
+    setup_url: "/api/v1/setup",
+  });
+
+  const challengeResponse = await fetch(`${base}/api/v1/setup`);
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await challengeResponse.json();
+  const setupCookie = challengeResponse.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .find((value) => value.startsWith("sprintmark_setup="));
+  assert.ok(challenge.setup_token);
+  assert.ok(setupCookie);
+  assert.equal(
+    challenge.redirect_uri,
+    "http://127.0.0.1:4310/auth/google/callback",
+  );
+
+  const rejected = await fetch(`${base}/api/v1/setup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode: "local" }),
+  });
+  assert.equal(rejected.status, 403);
+
+  const invalidConfiguration = await fetch(`${base}/api/v1/setup`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-setup-token": challenge.setup_token,
+      cookie: setupCookie,
+      origin: base,
+    },
+    body: JSON.stringify({ mode: "google" }),
+  });
+  assert.equal(invalidConfiguration.status, 400);
+
+  const completed = await fetch(`${base}/api/v1/setup`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-setup-token": challenge.setup_token,
+      cookie: setupCookie,
+      origin: base,
+    },
+    body: JSON.stringify({
+      mode: "local",
+      local_name: "First-run admin",
+      local_email: "admin@sprintmark.invalid",
+      locale: "en",
+      timezone: "Europe/Istanbul",
+    }),
+  });
+  assert.equal(completed.status, 201);
+  const result = await completed.json();
+  assert.deepEqual(result, {
+    configured: true,
+    auth_mode: "local",
+    login_url: "/auth/local/start",
+  });
+  assert.doesNotMatch(JSON.stringify(result), /SESSION_SECRET|client_secret/i);
+  const persisted = await readFile(configPath, "utf8");
+  assert.match(persisted, /SPRINTMARK_AUTH_MODE="local"/);
+  assert.match(persisted, /SPRINTMARK_LOCAL_USER_NAME="First-run admin"/);
+  assert.match(persisted, /SESSION_SECRET="[^"]{32,}"/);
+
+  const repeat = await fetch(`${base}/api/v1/setup`);
+  assert.equal(repeat.status, 409);
+  const login = await fetch(`${base}${result.login_url}`, {
+    redirect: "manual",
+  });
+  assert.equal(login.status, 302);
+});
+
+test("first-run setup cannot be exposed for a non-loopback host", async (context) => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-remote-setup-"));
+  const server = createWorkTrackerServer({
+    workspace,
+    setup: {
+      enabled: true,
+      host: "0.0.0.0",
+      port: 4310,
+      configPath: join(workspace, ".env.local"),
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+  const response = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/v1/setup`,
+  );
+  assert.equal(response.status, 403);
 });
 
 test("API returns ETags and rejects stale updates", async (context) => {

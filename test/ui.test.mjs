@@ -237,9 +237,29 @@ test("the saved locale is applied before the first visible header paint", async 
   assert.match(html, /<html lang="en">/);
   assert.match(html, /localStorage\.getItem\("sprintmark-locale"\)/);
   assert.match(html, /document\.documentElement\.lang = savedLocale/);
+  assert.match(app, /function renderAccessView\(content, kind\)/);
   assert.match(
     app,
-    /translateDocument\(\);\s+document\.documentElement\.classList\.add\("i18n-ready"\)/,
+    /document\.documentElement\.classList\.add\("i18n-ready"\)/,
   );
-  assert.match(styles, /html:not\(\.i18n-ready\) header/);
+  assert.match(styles, /body\.app-loading header nav/);
+  assert.doesNotMatch(styles, /html:not\(\.i18n-ready\) header/);
+});
+
+test("first-run setup is a dedicated localized wizard and never overlays the workspace", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="accessView" class="access-view" hidden/);
+  assert.match(app, /sessionResponse\.status === 428/);
+  assert.match(app, /function renderSetup\(metadata\)/);
+  assert.match(app, /"X-Setup-Token": metadata\.setup_token/);
+  assert.match(app, /autocomplete="new-password"/);
+  assert.doesNotMatch(app, /value="\$\{escapeHtml\(.*client_secret/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(styles, /\.setup-wizard/);
+  assert.match(styles, /\.mode-picker/);
+  assert.match(styles, /\.access-panel/);
 });

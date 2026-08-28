@@ -5,7 +5,7 @@ Sprintmark iki giriş modu sunar:
 - `local`: Yalnız loopback geliştirme ortamında çalışır ve Google hesabı gerektirmez.
 - `google`: Davetli ve e-postası doğrulanmış Google hesaplarını OIDC ile doğrular.
 
-Projeyi klonlayan bir geliştirici yerel modu yapılandırma yapmadan kullanabilir. Google modu için Google Cloud projesinin sahibi bir kez OAuth istemcisi oluşturmalıdır. Client ID ve client secret kullanıcıya/projeye özel olduğu için repository tarafından güvenli biçimde otomatik üretilemez.
+Projeyi klonlayan bir geliştirici `npm start` sonrasında tarayıcıdaki ilk kurulum sihirbazından yerel veya Google modunu seçer. Google modu için Google Cloud projesinin sahibi bir kez OAuth istemcisi oluşturmalıdır. Client ID ve client secret kullanıcıya/projeye özel olduğu için repository tarafından güvenli biçimde otomatik üretilemez; sihirbaz bunların oluşturulacağı ekranı ve girilecek kesin callback adresini gösterir.
 
 ## 1. Google Cloud yapılandırması
 
@@ -33,16 +33,34 @@ Projeyi klonlayan bir geliştirici yerel modu yapılandırma yapmadan kullanabil
 
 Google geliştirme sırasında loopback HTTP redirect URI'lerine izin verir. Loopback dışındaki bütün Sprintmark Google kurulumlarında `BASE_URL` ve callback HTTPS olmalıdır.
 
-## 2. Otomatik yerel yapılandırma
+## 2. Tarayıcıdan ilk kurulum
 
 Repository içinde çalıştırın:
+
+```bash
+npm ci
+npm start
+```
+
+Ardından <http://127.0.0.1:4310> adresini açın. Herhangi bir kimlik modu yapılandırılmamışsa Sprintmark çalışma alanı yerine kurulum sihirbazını gösterir:
+
+1. **Yerel kullanım** yalnız bu bilgisayarda hızlı değerlendirme ve geliştirme içindir. Görünen ad ile yerel profil e-postasını girmeniz yeterlidir.
+2. **Google ile ekip kullanımı** için Google Web Client ID, Client Secret ve ilk sistem yöneticilerinin e-postalarını girin.
+3. Google modunda ekranda gösterilen callback URI'sini Google Cloud'daki **Authorized redirect URIs** alanına aynen ekleyin.
+4. **Yapılandır ve devam et** düğmesine basın. Güçlü `SESSION_SECRET` otomatik üretilir, ayarlar `.env.local` dosyasına yazılır ve seçilen giriş ekranı yeniden başlatma gerektirmeden açılır.
+
+Web sihirbazı yalnız `127.0.0.1`, `localhost` veya `::1` üzerinden ilk yapılandırma tamamlanana kadar çalışır. Kurulum isteği kısa ömürlü, tek kullanımlık bir belirteç ve SameSite/HttpOnly cookie ile korunur. Client secret API yanıtında geri gönderilmez.
+
+## 3. Terminalden yapılandırma
+
+Headless sunucu veya terminal tercihinde aynı doğrulama kuralları şu komutla kullanılabilir:
 
 ```bash
 npm ci
 npm run setup:auth
 ```
 
-Sihirbaz şu bilgileri ister:
+Terminal sihirbazı şu bilgileri ister:
 
 - `google` modu
 - Uygulama adresi; yerelde varsayılan `http://127.0.0.1:4310`
@@ -57,7 +75,7 @@ Sihirbaz:
 - Google Console'a girilmesi gereken kesin callback URL'sini gösterir;
 - yapılandırmayı HTTPS/loopback, client ID, e-posta ve secret kurallarına göre doğrular.
 
-Ardından:
+Ardından henüz çalışmıyorsa:
 
 ```bash
 npm start

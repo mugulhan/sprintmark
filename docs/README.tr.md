@@ -9,7 +9,7 @@ npm ci
 npm start
 ```
 
-Ardından <http://127.0.0.1:4310> adresini açın. İlk açılışta çalışma alanı boştur; arayüzden proje oluşturabilir veya `npm run seed:demo` komutuyla örnek veri ekleyebilirsiniz.
+Ardından <http://127.0.0.1:4310> adresini açın. Yeni kurulumda tarayıcı sihirbazı yerel geliştirme profili veya Google ile ekip erişimi arasında seçim yaptırır; ayarları doğrular, güvenli oturum anahtarını üretir ve Git'in izlemediği `.env.local` dosyasına kaydeder. İlk çalışma alanı boştur; arayüzden proje oluşturabilir veya `npm run seed:demo` komutuyla örnek veri ekleyebilirsiniz.
 
 ## Temel kullanım
 
@@ -24,11 +24,13 @@ Ardından <http://127.0.0.1:4310> adresini açın. İlk açılışta çalışma 
 
 ## Kimlik ve oturum
 
-Loopback geliştirme ortamında açık bir yerel oturumla giriş yapılabilir. Google ile giriş için Google Cloud üzerinde bir Web OAuth istemcisi oluşturduktan sonra aşağıdaki sihirbazı çalıştırın:
+Loopback geliştirme ortamında yerel profil kullanılabilir. Google ile giriş için Google Cloud üzerinde bir Web OAuth istemcisi oluşturun; `npm start` sonrasında açılan tarayıcı sihirbazına Client ID, Client Secret ve ilk yönetici e-postalarını girin. Sihirbaz Google Console'a eklenmesi gereken kesin callback URL'sini ekranda gösterir.
+
+Terminal veya otomasyon için aynı işlem ayrıca şu komutla yapılabilir:
 
 ```bash
 npm run setup:auth
 npm start
 ```
 
-Sihirbaz güçlü bir session secret üretir, Git tarafından yok sayılan `.env.local` dosyasını yazar ve Google Console'a eklenmesi gereken kesin callback URL'sini gösterir. Ayrıntılı kurulum için [Google ile giriş rehberine](GOOGLE_AUTH_SETUP.md) bakın.
+Tarayıcı kurulum ekranı yalnız loopback adresinde ve ilk yapılandırma tamamlanana kadar çalışır. Ayrıntılı kurulum için [Google ile giriş rehberine](GOOGLE_AUTH_SETUP.md) bakın.

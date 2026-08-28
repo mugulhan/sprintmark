@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { stat } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
@@ -12,7 +13,14 @@ import { ProjectStore } from "./projects.mjs";
 import { SprintStore } from "./sprints.mjs";
 import { FILE_LIMIT, fileTypeForName } from "./files.mjs";
 import { CollaborationStore } from "./collaboration.mjs";
-import { AuthService, authConfigFromEnv } from "./auth.mjs";
+import { AuthService, authConfigFromEnv, parseCookies } from "./auth.mjs";
+import {
+  buildAuthEnvironment,
+  hasExplicitAuthConfiguration,
+  isLoopbackAddress,
+  isLoopbackHost,
+  writeAuthEnvironment,
+} from "./setup-config.mjs";
 import {
   assertAssignmentHandoff,
   assertProjectAccess,
@@ -219,6 +227,25 @@ function writeAllowed(req) {
   );
 }
 
+const SETUP_COOKIE = "sprintmark_setup";
+const SETUP_TOKEN_TTL = 10 * 60 * 1000;
+
+function setupCookie(value, clear = false) {
+  return [
+    `${SETUP_COOKIE}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    clear ? "Max-Age=0" : `Max-Age=${SETUP_TOKEN_TTL / 1000}`,
+  ].join("; ");
+}
+
+function safeTokenEqual(left, right) {
+  const a = Buffer.from(String(left || ""));
+  const b = Buffer.from(String(right || ""));
+  return a.length > 0 && a.length === b.length && timingSafeEqual(a, b);
+}
+
 async function notifyMentions(
   collaboration,
   directory,
@@ -298,27 +325,163 @@ export function createWorkTrackerServer({
   workspace = defaultWorkspace,
   authConfig = null,
   googleClient = null,
+  setup = null,
 } = {}) {
   const store = new WorkItemStore(workspace);
   const draftStore = new DraftStore(workspace);
   const projectStore = new ProjectStore(workspace);
   const sprintStore = new SprintStore(workspace);
   const collaboration = new CollaborationStore(workspace);
-  const resolvedAuthConfig = authConfig || authConfigFromEnv();
-  const auth = new AuthService({
-    workspace,
-    collaboration,
-    config: resolvedAuthConfig,
-    googleClient,
-  });
-  const initialized = auth.initialize();
+  const setupEnabled = Boolean(setup?.enabled);
+  let setupRequired = setupEnabled;
+  let setupChallenge = null;
+  let resolvedAuthConfig = setupRequired
+    ? null
+    : authConfig || authConfigFromEnv();
+  let auth = resolvedAuthConfig
+    ? new AuthService({
+        workspace,
+        collaboration,
+        config: resolvedAuthConfig,
+        googleClient,
+      })
+    : null;
+  let initialized = auth ? auth.initialize() : Promise.resolve();
+  const setupHost = setup?.host || "127.0.0.1";
+  const setupPort = Number(setup?.port || 4310);
+  const setupBaseUrl =
+    setup?.baseUrl ||
+    `http://${setupHost === "::1" ? "localhost" : setupHost}:${setupPort}`;
+  const setupPath = setup?.configPath || resolve(appRoot, ".env.local");
+
+  function assertSetupRequest(req) {
+    if (!setupRequired)
+      throw Object.assign(new Error("setup is already complete"), {
+        statusCode: 409,
+      });
+    if (
+      !isLoopbackHost(setupHost) ||
+      !isLoopbackAddress(req.socket.remoteAddress)
+    )
+      throw Object.assign(new Error("setup is available only on loopback"), {
+        statusCode: 403,
+      });
+  }
+
+  async function completeSetup(req, res) {
+    assertSetupRequest(req);
+    if (!writeAllowed(req))
+      return send(res, 403, { error: "origin_not_allowed" });
+    const headerToken = req.headers["x-setup-token"];
+    const cookieToken = parseCookies(req.headers.cookie)[SETUP_COOKIE];
+    if (
+      !setupChallenge ||
+      setupChallenge.expiresAt < Date.now() ||
+      !safeTokenEqual(headerToken, cookieToken) ||
+      !safeTokenEqual(headerToken, setupChallenge.token)
+    )
+      return send(res, 403, { error: "invalid_setup_token" });
+    const body = await jsonBody(req, 64 * 1024);
+    let built;
+    try {
+      built = buildAuthEnvironment({
+        mode: body.mode,
+        clientId: body.client_id,
+        clientSecret: body.client_secret,
+        adminEmails: body.admin_emails,
+        localName: body.local_name,
+        localEmail: body.local_email,
+        baseUrl: setupBaseUrl,
+        host: setupHost,
+        port: String(setupPort),
+        dataDir: setup?.dataDir || "./data",
+        timezone: body.timezone || "Europe/Istanbul",
+        locale: body.locale || "en",
+      });
+    } catch (error) {
+      error.statusCode = 400;
+      throw error;
+    }
+    const nextConfig = authConfigFromEnv(
+      setupHost,
+      setupPort,
+      built.environment,
+    );
+    const nextAuth = new AuthService({
+      workspace,
+      collaboration,
+      config: nextConfig,
+      googleClient,
+    });
+    await nextAuth.initialize();
+    await writeAuthEnvironment(setupPath, built.environment);
+    for (const [key, value] of Object.entries(built.environment))
+      process.env[key] = value;
+    auth = nextAuth;
+    resolvedAuthConfig = nextConfig;
+    initialized = Promise.resolve();
+    setupRequired = false;
+    setupChallenge = null;
+    return send(
+      res,
+      201,
+      {
+        configured: true,
+        auth_mode: nextConfig.mode,
+        login_url:
+          nextConfig.mode === "local"
+            ? "/auth/local/start"
+            : "/auth/google/start",
+        redirect_uri:
+          nextConfig.mode === "google" ? built.redirectUri : undefined,
+      },
+      { "Set-Cookie": setupCookie("", true) },
+    );
+  }
+
   return createServer(async (req, res) => {
     try {
       await initialized;
       const url = new URL(req.url, "http://127.0.0.1");
       const path = decodeURIComponent(url.pathname);
       if (path === "/healthz")
-        return send(res, 200, { status: "ok", version: VERSION });
+        return send(res, 200, {
+          status: "ok",
+          version: VERSION,
+          ...(setupRequired ? { setup_required: true } : {}),
+        });
+      if (path === "/api/v1/setup" && req.method === "GET") {
+        assertSetupRequest(req);
+        const token = randomBytes(32).toString("base64url");
+        setupChallenge = { token, expiresAt: Date.now() + SETUP_TOKEN_TTL };
+        return send(
+          res,
+          200,
+          {
+            setup_required: true,
+            setup_token: token,
+            base_url: setupBaseUrl,
+            redirect_uri: `${setupBaseUrl}/auth/google/callback`,
+            defaults: {
+              mode: "local",
+              local_name: "Local user",
+              local_email: "local@sprintmark.invalid",
+              timezone: "Europe/Istanbul",
+              locale: "en",
+            },
+          },
+          { "Set-Cookie": setupCookie(token) },
+        );
+      }
+      if (path === "/api/v1/setup" && req.method === "POST")
+        return await completeSetup(req, res);
+      if (setupRequired && path === "/api/v1/session" && req.method === "GET")
+        return send(res, 428, {
+          error: "setup_required",
+          setup_url: "/api/v1/setup",
+        });
+      if (setupRequired && path.startsWith("/auth/"))
+        return send(res, 409, { error: "setup_required" });
       if (path === "/auth/local/start" && req.method === "GET")
         return await auth.startLocal(res);
       if (path === "/auth/google/start" && req.method === "GET")
@@ -1191,9 +1354,21 @@ if (
   const workspace = process.env.SPRINTMARK_DATA_DIR
     ? resolve(process.env.SPRINTMARK_DATA_DIR)
     : defaultWorkspace;
+  const firstRunSetup =
+    isLoopbackHost(host) && !hasExplicitAuthConfiguration(process.env);
   createWorkTrackerServer({
     workspace,
-    authConfig: authConfigFromEnv(host, port),
+    authConfig: firstRunSetup ? null : authConfigFromEnv(host, port),
+    setup: firstRunSetup
+      ? {
+          enabled: true,
+          host,
+          port,
+          baseUrl: `http://${host === "::1" ? "localhost" : host}:${port}`,
+          configPath: resolve(appRoot, ".env.local"),
+          dataDir: process.env.SPRINTMARK_DATA_DIR || "./data",
+        }
+      : null,
   }).listen(port, host, () =>
     console.log(`Sprintmark v${VERSION}: http://${host}:${port}`),
   );
