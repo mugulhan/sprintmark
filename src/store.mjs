@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, resolve, sep } from "node:path";
 import { newUid, slugify, validateRecord } from "./identity.mjs";
+import { actorSnapshot, legacyActor } from "./collaboration.mjs";
 import { assertRecordSet, loadRecords, saveRecord } from "./records.mjs";
 import { generateSummaries } from "./summaries.mjs";
 import {
@@ -14,6 +15,10 @@ const allowedPatchFields = new Set([
   "slug",
   "status",
   "team",
+  "team_id",
+  "assignee_id",
+  "reviewer_id",
+  "follower_ids",
   "scheduled_for",
   "scheduled_time",
   "priority",
@@ -26,6 +31,10 @@ const trackedPatchFields = [
   "title",
   "status",
   "team",
+  "team_id",
+  "assignee_id",
+  "reviewer_id",
+  "follower_ids",
   "scheduled_for",
   "scheduled_time",
   "priority",
@@ -34,19 +43,57 @@ const trackedPatchFields = [
   "project_key",
 ];
 
-function createdActivity(record) {
+const STATUS_MAP = {
+  open: "planned",
+  triage: "backlog",
+  software: "planned",
+};
+
+const TEAM_MAP = {
+  "content-technical": "team-content-technical",
+  "web-development": "team-web-development",
+};
+
+function createdActivity(record, actor = null) {
   return {
     id: `created-${record.uid}`,
     type: "created",
-    actor: "system",
+    actor: actorSnapshot(actor),
     created_at: record.created_at,
   };
 }
 
 function normalizedActivities(record) {
-  return Array.isArray(record.activities) && record.activities.length
-    ? record.activities
-    : [createdActivity(record)];
+  const activities =
+    Array.isArray(record.activities) && record.activities.length
+      ? record.activities
+      : [createdActivity(record)];
+  return activities.map((activity) => ({
+    ...activity,
+    actor: legacyActor(activity.actor),
+  }));
+}
+
+export function normalizeWorkItem(record, fallbackUserId = "usr-local") {
+  const mappedStatus = STATUS_MAP[record.status] || record.status;
+  const mappedKind =
+    record.status === "triage"
+      ? "backlog"
+      : record.status === "software"
+        ? "task"
+        : record.kind;
+  return {
+    ...record,
+    schema_version: 3,
+    kind: mappedKind,
+    status: mappedStatus,
+    team_id: record.team_id || TEAM_MAP[record.team] || null,
+    reporter_id: record.reporter_id || fallbackUserId,
+    assignee_id: record.assignee_id || null,
+    reviewer_id: record.reviewer_id || null,
+    follower_ids: [...new Set(record.follower_ids || [])],
+    activities: normalizedActivities(record),
+  };
 }
 
 function changeValue(field, value) {
@@ -78,10 +125,7 @@ export class WorkItemStore {
   async all() {
     const records = await loadRecords(this.workspace);
     assertRecordSet(records);
-    return records.map((record) => ({
-      ...record,
-      activities: normalizedActivities(record),
-    }));
+    return records.map((record) => normalizeWorkItem(record));
   }
 
   async byKey(key) {
@@ -95,26 +139,34 @@ export class WorkItemStore {
     return (await this.all()).find((item) => item.uid === uid) || null;
   }
 
-  async create(input, { attachments = [] } = {}) {
+  async create(input, { attachments = [], actor = null } = {}) {
     if (attachments.length > 20)
       throw Object.assign(new Error("attachment limit reached"), {
         statusCode: 409,
       });
     const records = await this.all();
+    if (input.team && !TEAM_MAP[input.team])
+      throw Object.assign(new Error("team is invalid"), { statusCode: 400 });
     const kind = input.kind === "backlog" ? "backlog" : "task";
     const keyPrefix = String(input.key_prefix || "WORK").toUpperCase();
     const key = input.key || this.nextKey(records, kind, keyPrefix);
     const now = new Date().toISOString();
     const record = {
-      schema_version: 2,
+      schema_version: 3,
       uid: input._uid || newUid(),
       key,
       kind,
       project_key: input.project_key || "PRJ-001",
       title: String(input.title || "").trim(),
       slug: slugify(input.slug || input.title),
-      status: input.status || (kind === "backlog" ? "triage" : "open"),
-      team: input.team || "content-technical",
+      status: input.status || (kind === "backlog" ? "backlog" : "planned"),
+      team_id: Object.hasOwn(input, "team_id")
+        ? input.team_id
+        : TEAM_MAP[input.team] || "team-content-technical",
+      reporter_id: actor?.id || input.reporter_id || "usr-local",
+      assignee_id: input.assignee_id || null,
+      reviewer_id: input.reviewer_id || null,
+      follower_ids: [...new Set(input.follower_ids || [])],
       scheduled_for: input.scheduled_for || null,
       scheduled_time: input.scheduled_time || null,
       priority: input.priority || null,
@@ -127,7 +179,7 @@ export class WorkItemStore {
       attachments,
       activities: [],
     };
-    record.activities.push(createdActivity(record));
+    record.activities.push(createdActivity(record, actor));
     const errors = validateRecord(record);
     if (errors.length)
       throw Object.assign(new Error(errors.join(", ")), { statusCode: 400 });
@@ -160,7 +212,12 @@ export class WorkItemStore {
     return `${prefix}-${String(max + 1).padStart(4, "0")}`;
   }
 
-  async patch(uid, input, ifMatch, { attachments = [] } = {}) {
+  async patch(
+    uid,
+    input,
+    ifMatch,
+    { attachments = [], actor = null, transitionNote = "" } = {},
+  ) {
     const existing = await this.byUid(uid);
     if (!existing)
       throw Object.assign(new Error("work item not found"), {
@@ -182,10 +239,11 @@ export class WorkItemStore {
     }
     const now = new Date().toISOString();
     const changes = patchChanges(existing, input);
+    const eventActor = actorSnapshot(actor);
     const promotedAttachments = attachments.map((attachment) => ({
       id: newUid(),
       type: "attachment_added",
-      actor: "system",
+      actor: eventActor,
       created_at: now,
       details: { name: attachment.original_name || attachment.name },
     }));
@@ -194,9 +252,27 @@ export class WorkItemStore {
           {
             id: newUid(),
             type: "changed",
-            actor: "system",
+            actor: eventActor,
             created_at: now,
             changes,
+          },
+        ]
+      : [];
+    const handoff = changes.some((change) =>
+      ["assignee_id", "team_id"].includes(change.field),
+    );
+    const review =
+      changes.some((change) => change.field === "status") &&
+      ["review", "done", "in_progress"].includes(input.status);
+    const eventActivity = transitionNote
+      ? [
+          {
+            id: newUid(),
+            type: handoff ? "handoff" : review ? "review" : "comment",
+            actor: eventActor,
+            created_at: now,
+            ...(handoff || review ? { changes } : {}),
+            body: String(transitionNote).trim(),
           },
         ]
       : [];
@@ -207,6 +283,7 @@ export class WorkItemStore {
       activities: [
         ...normalizedActivities(existing),
         ...changeActivity,
+        ...eventActivity,
         ...promotedAttachments,
       ],
       updated_at: now,
@@ -216,6 +293,12 @@ export class WorkItemStore {
     if (existing.status === "done" && next.status !== "done")
       next.completed_at = null;
     next.slug = slugify(next.slug || next.title);
+    next.kind =
+      existing.kind === "backlog" &&
+      existing.status === "backlog" &&
+      next.status === "planned"
+        ? "task"
+        : existing.kind;
     delete next.body;
     delete next._path;
     delete next._etag;
@@ -231,7 +314,7 @@ export class WorkItemStore {
     return { ...next, body: input.body ?? existing.body, _etag: saved.etag };
   }
 
-  async addAttachment(uid, file, placement = "evidence") {
+  async addAttachment(uid, file, placement = "evidence", actor = null) {
     const existing = await this.byUid(uid);
     if (!existing)
       throw Object.assign(new Error("work item not found"), {
@@ -278,7 +361,7 @@ export class WorkItemStore {
         {
           id: newUid(),
           type: "attachment_added",
-          actor: "system",
+          actor: actorSnapshot(actor),
           created_at: now,
           details: { name: attachment.original_name },
         },
@@ -302,7 +385,7 @@ export class WorkItemStore {
     };
   }
 
-  async removeAttachment(uid, name, ifMatch) {
+  async removeAttachment(uid, name, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     if (!existing)
       throw Object.assign(new Error("work item not found"), {
@@ -341,7 +424,7 @@ export class WorkItemStore {
         {
           id: newUid(),
           type: "attachment_removed",
-          actor: "system",
+          actor: actorSnapshot(actor),
           created_at: new Date().toISOString(),
           details: { name: attachment.original_name || attachment.name },
         },
@@ -357,7 +440,7 @@ export class WorkItemStore {
     return { ...next, body: existing.body, _etag: saved.etag };
   }
 
-  async addComment(uid, body, ifMatch) {
+  async addComment(uid, body, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     if (!existing)
       throw Object.assign(new Error("work item not found"), {
@@ -383,7 +466,7 @@ export class WorkItemStore {
     const activity = {
       id: newUid(),
       type: "comment",
-      actor: "user",
+      actor: actorSnapshot(actor),
       created_at: now,
       body: text,
     };

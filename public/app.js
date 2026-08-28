@@ -6,6 +6,11 @@ const initialView = location.pathname.startsWith("/projects")
     ? "backlog"
     : "calendar";
 const state = {
+  session: null,
+  users: [],
+  teams: [],
+  notifications: [],
+  notificationEtag: null,
   projects: [],
   selectedProject: null,
   projectIndex:
@@ -38,6 +43,42 @@ const state = {
   returnPath: "/",
 };
 const $ = (id) => document.getElementById(id);
+const nativeFetch = window.fetch.bind(window);
+async function apiFetch(input, init = {}) {
+  const options = { ...init, headers: new window.Headers(init.headers || {}) };
+  if (
+    state.session?.csrf_token &&
+    !["GET", "HEAD", "OPTIONS"].includes(
+      String(options.method || "GET").toUpperCase(),
+    )
+  )
+    options.headers.set("X-CSRF-Token", state.session.csrf_token);
+  const response = await nativeFetch(input, options);
+  if (response.status === 401 && !String(input).includes("/api/v1/session"))
+    renderLogin();
+  return response;
+}
+function renderLogin() {
+  document.body.classList.remove("app-loading");
+  document.querySelector("main").innerHTML =
+    '<section class="not-found auth-required"><h1>Sprintmark</h1><p>Sign in with an invited Google account to continue.</p><a class="primary button-link" href="/auth/google/start">Continue with Google</a></section>';
+}
+function renderAccount() {
+  if (!state.session?.user) return;
+  $("accountMenu").hidden = false;
+  $("accountName").textContent = state.session.user.display_name;
+  $("notificationCount").textContent = String(
+    state.notifications.filter((item) => !item.read_at).length,
+  );
+  $("notificationPanel").innerHTML = state.notifications.length
+    ? state.notifications
+        .map(
+          (item) =>
+            `<a href="${escapeHtml(item.url)}" data-notification-id="${escapeHtml(item.id)}"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(localDateTime(item.created_at))} · ${escapeHtml(relativeElapsed(item.created_at))}</small></a>`,
+        )
+        .join("")
+    : "<p>No notifications.</p>";
+}
 function applyViewShell(view) {
   document.body.dataset.view = view;
   $("calendarView").hidden = view !== "calendar";
@@ -58,8 +99,9 @@ const escapeHtml = (v) =>
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
   );
 const teamName = (value) =>
+  state.teams.find((team) => team.id === value || team.code === value)?.name ||
   t(
-    value === "web-development"
+    value === "web-development" || value === "team-web-development"
       ? "team.webDevelopment"
       : "team.contentTechnical",
   );
@@ -72,6 +114,9 @@ const statusName = (value) =>
       software: "status.software",
       waiting: "status.waiting",
       planned: "status.planned",
+      backlog: "status.triage",
+      in_progress: "status.inProgress",
+      review: "status.review",
       active: "status.active",
       completed: "status.done",
     }[value] || value,
@@ -114,10 +159,19 @@ const relativeElapsed = (value) => {
     numeric: "auto",
   }).format(-Math.round(elapsedSeconds / seconds), unit);
 };
-const workItemStatuses = (item) =>
-  item.kind === "backlog"
-    ? ["triage", "software", "waiting", "done"]
-    : ["open", "done"];
+const workItemStatuses = (item) => [
+  ...new Set([
+    item.status,
+    ...({
+      backlog: ["planned"],
+      planned: ["in_progress", "waiting"],
+      in_progress: ["review", "done", "waiting"],
+      review: ["done", "in_progress", "waiting"],
+      waiting: ["planned", "in_progress"],
+      done: ["in_progress"],
+    }[item.status] || []),
+  ]),
+];
 const canonical = (item) => `/work-items/${item.key}/${item.slug}`;
 const projectCanonical = (project) =>
   `/projects/${project.key}/${project.slug}`;
@@ -183,7 +237,9 @@ function breadcrumbItems() {
           ? "breadcrumb.backlog"
           : state.projectSection === "documents"
             ? "breadcrumb.documents"
-            : "breadcrumb.overview",
+            : state.projectSection === "people"
+              ? "breadcrumb.people"
+              : "breadcrumb.overview",
     ),
     current: true,
   });
@@ -232,6 +288,16 @@ function renderStatusOptions() {
       )
       .join("");
   $("statusFilter").value = selected;
+  const selectedTeam = $("teamFilter").value;
+  $("teamFilter").innerHTML =
+    `<option value="">${t("filters.allTeams")}</option>` +
+    state.teams
+      .map(
+        (team) =>
+          `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`,
+      )
+      .join("");
+  $("teamFilter").value = selectedTeam;
 }
 function renderBuildMeta() {
   if (!state.meta) return;
@@ -351,7 +417,7 @@ function filtered() {
   return state.items.filter(
     (i) =>
       i.project_key === state.selectedProject &&
-      (!team || i.team === team) &&
+      (!team || i.team_id === team || i.team === team) &&
       (!status || i.status === status) &&
       (!priority ||
         (priority === "none" ? !i.priority : i.priority === priority)) &&
@@ -445,7 +511,7 @@ function renderCalendar() {
 }
 function renderBacklog() {
   const items = filtered().filter((i) => i.kind === "backlog"),
-    statuses = ["software", "triage", "waiting", "done"];
+    statuses = ["backlog", "planned", "in_progress", "waiting", "done"];
   $("board").innerHTML = statuses
     .map(
       (s) =>
@@ -510,14 +576,14 @@ function updateProjectInState(project) {
 async function loadProjectDocuments() {
   const project = currentProject();
   if (!project) return;
-  const response = await fetch(`/api/v1/projects/${project.uid}/documents`);
+  const response = await apiFetch(`/api/v1/projects/${project.uid}/documents`);
   if (!response.ok)
     throw new Error((await response.json()).error || t("error.documentsLoad"));
   state.projectDocuments = (await response.json()).items;
 }
 
 async function setProjectSection(section, updateAddress = true) {
-  if (!["overview", "documents"].includes(section)) return;
+  if (!["overview", "documents", "people"].includes(section)) return;
   state.projectSection = section;
   if (section === "documents") {
     try {
@@ -526,15 +592,53 @@ async function setProjectSection(section, updateAddress = true) {
       alert(error.message);
     }
   }
+  if (section === "people") {
+    const project = currentProject();
+    const response = await apiFetch(`/api/v1/projects/${project.key}`);
+    if (response.ok) updateProjectInState(await response.json());
+  }
   if (updateAddress && state.view === "projects") {
     const project = currentProject();
-    const suffix = section === "documents" ? "?tab=documents" : "";
+    const suffix = section === "overview" ? "" : `?tab=${section}`;
     if (project)
       history.replaceState({}, "", `${projectCanonical(project)}${suffix}`);
   }
   renderProjectDashboard();
   renderBreadcrumb();
   translateDocument();
+}
+
+function renderProjectPeople(project) {
+  const owner = state.users.find((user) => user.id === project.owner_user_id);
+  const ownerOptions = state.users
+    .map(
+      (user) =>
+        `<option value="${escapeHtml(user.id)}" ${user.id === project.owner_user_id ? "selected" : ""}>${escapeHtml(user.display_name)}</option>`,
+    )
+    .join("");
+  const teamOptions = state.teams
+    .map(
+      (team) =>
+        `<label><input type="checkbox" name="team_ids" value="${escapeHtml(team.id)}" ${(project.team_ids || []).includes(team.id) ? "checked" : ""}>${escapeHtml(team.name)}</label>`,
+    )
+    .join("");
+  const memberRows = state.users
+    .filter((user) => user.id !== project.owner_user_id)
+    .map((user) => {
+      const role = project.members?.find(
+        (member) => member.user_id === user.id,
+      )?.role;
+      return `<label>${escapeHtml(user.display_name)}<select name="member-${escapeHtml(user.id)}"><option value="">—</option>${["manager", "member", "viewer"].map((value) => `<option value="${value}" ${role === value ? "selected" : ""}>${t(`project.role.${value}`)}</option>`).join("")}</select></label>`;
+    })
+    .join("");
+  const activity = [...(project.activities || [])]
+    .reverse()
+    .map(
+      (entry) =>
+        `<li><strong>${escapeHtml(entry.actor?.display_name || "Sprintmark")}</strong><span>${escapeHtml(localDateTime(entry.created_at))} · ${escapeHtml(relativeElapsed(entry.created_at))}</span></li>`,
+    )
+    .join("");
+  return `<section class="dashboard-section project-people"><div class="section-head"><div><h3>${t("project.people")}</h3><p>${t("project.peopleCaption")}</p></div></div><p><strong>${t("project.owner")}:</strong> ${escapeHtml(owner?.display_name || project.owner_user_id)}</p><form id="projectPeopleForm"><label>${t("project.owner")}<select name="owner_user_id">${ownerOptions}</select></label><fieldset><legend>${t("project.teams")}</legend>${teamOptions}</fieldset><fieldset><legend>${t("project.members")}</legend>${memberRows}</fieldset><button class="primary" type="submit">${t("work.update")}</button></form><h4>${t("activity.title")}</h4><ol class="activity-list">${activity || `<li>${t("activity.empty")}</li>`}</ol></section>`;
 }
 
 function plainHeadingLabel(value) {
@@ -643,7 +747,7 @@ async function openProjectDocumentPreview(index) {
       `<iframe class="document-pdf-preview" src="${escapeHtml(projectDocument.url)}" title="${escapeHtml(name)}"></iframe>`;
     return;
   }
-  const response = await fetch(projectDocument.url);
+  const response = await apiFetch(projectDocument.url);
   if (!response.ok) {
     $("documentPreviewBody").textContent = t("documents.loadError");
     return;
@@ -681,11 +785,14 @@ async function uploadProjectDocuments(files) {
   for (const file of files) {
     const data = new FormData();
     data.append("file", file, file.name);
-    const response = await fetch(`/api/v1/projects/${project.uid}/documents`, {
-      method: "POST",
-      headers: { "If-Match": project._etag },
-      body: data,
-    });
+    const response = await apiFetch(
+      `/api/v1/projects/${project.uid}/documents`,
+      {
+        method: "POST",
+        headers: { "If-Match": project._etag },
+        body: data,
+      },
+    );
     if (!response.ok)
       throw new Error(
         (await response.json()).error || t("error.documentUpload"),
@@ -731,8 +838,14 @@ function renderProjectDashboard() {
         `<button data-key="${item.key}"><span><strong>${item.key}</strong>${escapeHtml(item.title)}</span><small>${item.completed_at ? `✓ ${escapeHtml(relativeElapsed(item.completed_at))} · ` : ""}${item.updated_at.slice(0, 10)} · ${statusName(item.status)}</small></button>`,
     )
     .join("")}</div></section>`;
+  const sectionContent =
+    state.projectSection === "documents"
+      ? renderProjectDocuments(project)
+      : state.projectSection === "people"
+        ? renderProjectPeople(project)
+        : overview;
   $("projectDashboard").innerHTML =
-    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p></div><div class="project-actions"><button data-project-action="calendar">${t("project.goCalendar")}</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>${t("project.createItem")}</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>${t("sprint.create")}</button><button data-project-action="edit">${t("project.edit")}</button></div></section><nav class="project-tabs" aria-label="${t("project.sectionsLabel")}"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">${t("breadcrumb.overview")}</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">${t("breadcrumb.documents")} <span>${project.documents?.length || 0}</span></button></nav>${state.projectSection === "documents" ? renderProjectDocuments(project) : overview}`;
+    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p></div><div class="project-actions"><button data-project-action="calendar">${t("project.goCalendar")}</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>${t("project.createItem")}</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>${t("sprint.create")}</button><button data-project-action="edit">${t("project.edit")}</button></div></section><nav class="project-tabs" aria-label="${t("project.sectionsLabel")}"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">${t("breadcrumb.overview")}</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">${t("breadcrumb.documents")} <span>${project.documents?.length || 0}</span></button><button data-project-tab="people" class="${state.projectSection === "people" ? "active" : ""}" aria-selected="${state.projectSection === "people"}">${t("breadcrumb.people")}</button></nav>${sectionContent}`;
 }
 function renderProjects() {
   renderProjectList();
@@ -821,7 +934,9 @@ function activityDescription(activity) {
     return t("activity.attachmentRemoved", {
       name: escapeHtml(activity.details?.name || t("file.generic")),
     });
-  if (activity.type === "changed") {
+  if (
+    ["changed", "assignment", "handoff", "ownership"].includes(activity.type)
+  ) {
     const changes = (activity.changes || [])
       .map((change) => {
         const field = escapeHtml(activityFieldName(change.field));
@@ -847,11 +962,13 @@ function renderActivity(item) {
     ? activities
         .map(
           (activity) =>
-            `<li class="activity-entry activity-${escapeHtml(activity.type)}"><span class="activity-marker" aria-hidden="true"></span><div class="activity-entry-content"><header><strong>${t(
-              activity.actor === "user"
-                ? "activity.actorUser"
-                : "activity.actorSystem",
-            )}</strong><time datetime="${escapeHtml(activity.created_at)}" title="${escapeHtml(localDateTime(activity.created_at))}">${escapeHtml(relativeElapsed(activity.created_at))}</time></header><div>${activityDescription(activity)}</div></div></li>`,
+            `<li class="activity-entry activity-${escapeHtml(activity.type)}"><span class="activity-marker" aria-hidden="true"></span><div class="activity-entry-content"><header><strong>${escapeHtml(
+              typeof activity.actor === "object"
+                ? activity.actor.display_name
+                : activity.actor === "user"
+                  ? t("activity.actorUser")
+                  : t("activity.actorSystem"),
+            )}</strong><time datetime="${escapeHtml(activity.created_at)}">${escapeHtml(localDateTime(activity.created_at))} · ${escapeHtml(relativeElapsed(activity.created_at))}</time></header><div>${activityDescription(activity)}</div></div></li>`,
         )
         .join("")
     : `<li class="activity-empty">${t("activity.empty")}</li>`;
@@ -862,35 +979,79 @@ function renderWorkItemChrome(item) {
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
   $("detailStatus").textContent = statusName(item.status);
   $("detailPriority").textContent = priorityName(item.priority);
-  $("detailTeam").textContent = teamName(item.team);
+  $("detailTeam").textContent = teamName(item.team_id || item.team);
   $("editStatus").innerHTML = workItemStatuses(item)
     .map((status) => `<option value="${status}">${statusName(status)}</option>`)
     .join("");
   $("editStatus").value = item.status;
-  $("editTeam").value = item.team;
+  $("editTeam").innerHTML = [
+    '<option value="">—</option>',
+    ...state.teams.map(
+      (team) =>
+        `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`,
+    ),
+  ].join("");
+  $("editTeam").value = item.team_id || "";
+  const peopleOptions = [
+    '<option value="">—</option>',
+    ...state.users.map(
+      (user) =>
+        `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name)}</option>`,
+    ),
+  ].join("");
+  $("editAssignee").innerHTML = peopleOptions;
+  $("editReviewer").innerHTML = peopleOptions;
+  $("editFollowers").innerHTML = state.users
+    .map(
+      (user) =>
+        `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name)}</option>`,
+    )
+    .join("");
+  $("editAssignee").value = item.assignee_id || "";
+  $("editReviewer").value = item.reviewer_id || "";
+  for (const option of $("editFollowers").options)
+    option.selected = (item.follower_ids || []).includes(option.value);
+  $("editTransitionNote").value = "";
   $("editPriority").value = item.priority || "";
   $("editDate").value = item.scheduled_for || "";
   $("editTime").value = item.scheduled_time || "";
-  $("toggleDone").textContent =
-    item.status === "done" ? t("work.reopen") : t("work.markDone");
+  $("toggleDone").textContent = t(
+    item.status === "done"
+      ? "work.reopen"
+      : item.status === "backlog"
+        ? "work.plan"
+        : item.status === "planned"
+          ? "work.start"
+          : item.status === "review"
+            ? "work.approve"
+            : item.status === "waiting"
+              ? "work.resume"
+              : item.reviewer_id
+                ? "work.requestReview"
+                : "work.markDone",
+  );
   $("toggleDone").classList.toggle("reopen", item.status === "done");
   const completionFact = item.completed_at
     ? `<dt>${t("work.completedAt")}</dt><dd class="completion-time"><time datetime="${escapeHtml(item.completed_at)}">${localDateTime(item.completed_at)}</time><small>${escapeHtml(relativeElapsed(item.completed_at))}</small></dd>`
     : "";
   $("facts").innerHTML =
     `<dt>${t("work.project")}</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>${t("work.calendar")}</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>${t("work.priority")}</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>${t("work.created")}</dt><dd>${localDateTime(item.created_at)}</dd><dt>${t("work.updated")}</dt><dd>${localDateTime(item.updated_at)}</dd><dt>${t("work.legacyId")}</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
+  $("facts").insertAdjacentHTML(
+    "afterbegin",
+    `<dt>${t("work.reporter")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reporter_id)?.display_name || item.reporter_id || "—")}</dd><dt>${t("work.assignee")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.assignee_id)?.display_name || "—")}</dd><dt>${t("work.reviewer")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reviewer_id)?.display_name || "—")}</dd>`,
+  );
   renderEvidence(item);
   renderActivity(item);
   translateDocument();
 }
 async function openItem(key, push = true) {
-  const response = await fetch(`/api/v1/work-items/${key}`);
+  const response = await apiFetch(`/api/v1/work-items/${key}`);
   if (!response.ok) {
     location.href = `/work-items/${key}/bulunamadi`;
     return;
   }
   const item = await response.json();
-  const referencesResponse = await fetch(
+  const referencesResponse = await apiFetch(
     `/api/v1/work-items/${item.uid}/file-references`,
   );
   state.fileReferences = referencesResponse.ok
@@ -923,14 +1084,14 @@ async function openItem(key, push = true) {
   window.requestAnimationFrame(() => renderWorkItemViewer(item.body));
 }
 async function createDraft() {
-  const response = await fetch("/api/v1/drafts", { method: "POST" });
+  const response = await apiFetch("/api/v1/drafts", { method: "POST" });
   if (!response.ok)
     throw new Error((await response.json()).error || t("error.draftCreate"));
   return response.json();
 }
 async function deleteDraft(id) {
   if (!id) return;
-  await fetch(`/api/v1/drafts/${id}`, { method: "DELETE" }).catch(() => {});
+  await apiFetch(`/api/v1/drafts/${id}`, { method: "DELETE" }).catch(() => {});
 }
 async function uploadDraftFile(draftId, file, placement = "evidence") {
   if (!draftId) throw new Error(t("error.draftMissing"));
@@ -938,7 +1099,7 @@ async function uploadDraftFile(draftId, file, placement = "evidence") {
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
   data.append("placement", placement);
   data.append("alt", file.name || "Clipboard image");
-  const response = await fetch(`/api/v1/drafts/${draftId}/attachments`, {
+  const response = await apiFetch(`/api/v1/drafts/${draftId}/attachments`, {
     method: "POST",
     body: data,
   });
@@ -952,7 +1113,7 @@ async function uploadWorkItemFile(file, placement = "evidence") {
   data.append("file", file, file.name || `clipboard-${Date.now()}.png`);
   data.append("placement", placement);
   data.append("alt", file.name || "Clipboard image");
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/work-items/${state.selected.uid}/attachments`,
     { method: "POST", body: data },
   );
@@ -1079,7 +1240,7 @@ async function saveWorkItemBody() {
     return;
   }
   $("saveWorkItem").disabled = true;
-  const response = await fetch(`/api/v1/work-items/${state.selected.uid}`, {
+  const response = await apiFetch(`/api/v1/work-items/${state.selected.uid}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -1105,7 +1266,7 @@ async function saveWorkItemBody() {
 }
 async function patchSelectedWorkItem(patch) {
   if (!state.selected) return null;
-  const response = await fetch(`/api/v1/work-items/${state.selected.uid}`, {
+  const response = await apiFetch(`/api/v1/work-items/${state.selected.uid}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -1137,6 +1298,12 @@ async function openCreateDialog(context = null) {
   const draft = await createDraft();
   state.createDraftId = draft.id;
   const form = $("createForm");
+  $("createTeam").innerHTML = state.teams
+    .map(
+      (team) =>
+        `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`,
+    )
+    .join("");
   if (context?.scheduledFor) {
     const now = new Date();
     form.elements.scheduled_for.value = context.scheduledFor;
@@ -1156,16 +1323,33 @@ async function openCreateDialog(context = null) {
   });
 }
 async function load() {
-  const [projects, records, sprints, meta] = await Promise.all([
-    fetch("/api/v1/projects").then((r) => r.json()),
-    fetch("/api/v1/work-items").then((r) => r.json()),
-    fetch("/api/v1/sprints").then((r) => r.json()),
-    fetch("/api/v1/meta").then((r) => r.json()),
-  ]);
+  const sessionResponse = await apiFetch("/api/v1/session");
+  if (!sessionResponse.ok) {
+    renderLogin();
+    return;
+  }
+  state.session = await sessionResponse.json();
+  const [projects, records, sprints, meta, users, teams, notifications] =
+    await Promise.all([
+      apiFetch("/api/v1/projects").then((r) => r.json()),
+      apiFetch("/api/v1/work-items").then((r) => r.json()),
+      apiFetch("/api/v1/sprints").then((r) => r.json()),
+      apiFetch("/api/v1/meta").then((r) => r.json()),
+      apiFetch("/api/v1/users").then((r) => r.json()),
+      apiFetch("/api/v1/teams").then((r) => r.json()),
+      apiFetch("/api/v1/notifications").then(async (r) => {
+        state.notificationEtag = r.headers.get("etag");
+        return r.json();
+      }),
+    ]);
   state.projects = projects.items;
   state.items = records.items;
   state.sprints = sprints.items;
   state.meta = meta;
+  state.users = users.items || [];
+  state.teams = teams.items || [];
+  state.notifications = notifications.items || [];
+  renderAccount();
   document.documentElement.lang =
     window.localStorage.getItem("sprintmark-locale") ||
     meta.default_locale ||
@@ -1181,12 +1365,20 @@ async function load() {
     state.projects.find((project) => project.key === rememberedProject)?.key ||
     state.projects.find((project) => project.status === "active")?.key ||
     state.projects[0]?.key;
+  const requestedSection = new window.URLSearchParams(location.search).get(
+    "tab",
+  );
   state.projectSection =
     state.view === "projects" &&
-    new window.URLSearchParams(location.search).get("tab") === "documents"
-      ? "documents"
+    ["documents", "people"].includes(requestedSection)
+      ? requestedSection
       : "overview";
   if (state.projectSection === "documents") await loadProjectDocuments();
+  if (state.projectSection === "people") {
+    const project = currentProject();
+    const detail = await apiFetch(`/api/v1/projects/${project.key}`);
+    if (detail.ok) updateProjectInState(await detail.json());
+  }
   renderProjectOptions();
   renderBuildMeta();
   renderStatusOptions();
@@ -1201,7 +1393,7 @@ async function load() {
   const route = location.pathname.match(
     /^\/work-items\/([A-Z][A-Z0-9]{1,7}-(?:\d{4}[A-Z]?|BL-\d{3}))/i,
   );
-  if (route) openItem(route[1], false);
+  if (route) await openItem(route[1], false);
 }
 document.addEventListener("click", async (e) => {
   const projectTab = e.target.closest("[data-project-tab]");
@@ -1237,7 +1429,7 @@ document.addEventListener("click", async (e) => {
     const project = currentProject();
     if (!project || !globalThis.confirm(t("validation.removeDocument"))) return;
     projectDocumentRemove.disabled = true;
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/projects/${project.uid}/documents/${projectDocumentRemove.dataset.projectDocumentRemove}`,
       { method: "DELETE", headers: { "If-Match": project._etag } },
     );
@@ -1311,11 +1503,36 @@ document.addEventListener("click", async (e) => {
   const projectAction = e.target.closest("[data-project-action]");
   if (projectAction) handleProjectAction(projectAction.dataset.projectAction);
 });
+document.addEventListener("submit", async (event) => {
+  if (event.target.id !== "projectPeopleForm") return;
+  event.preventDefault();
+  const project = currentProject();
+  const data = new FormData(event.target);
+  const members = state.users.flatMap((user) => {
+    const role = data.get(`member-${user.id}`);
+    return role ? [{ user_id: user.id, role }] : [];
+  });
+  const response = await apiFetch(`/api/v1/projects/${project.uid}/members`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "If-Match": project._etag,
+    },
+    body: JSON.stringify({
+      owner_user_id: data.get("owner_user_id"),
+      team_ids: data.getAll("team_ids"),
+      members,
+    }),
+  });
+  if (!response.ok) return alert((await response.json()).error);
+  updateProjectInState(await response.json());
+  renderProjectDashboard();
+});
 async function scheduleItem(uid, scheduledFor) {
   const item = state.items.find((candidate) => candidate.uid === uid);
   if (!item || item.kind !== "task" || item.scheduled_for === scheduledFor)
     return;
-  const response = await fetch(`/api/v1/work-items/${uid}`, {
+  const response = await apiFetch(`/api/v1/work-items/${uid}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "If-Match": item._etag },
     body: JSON.stringify({ scheduled_for: scheduledFor }),
@@ -1385,7 +1602,7 @@ document.addEventListener("submit", async (event) => {
   if (!project) return;
   const button = event.target.querySelector('button[type="submit"]');
   button.disabled = true;
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/projects/${project.uid}/document-references`,
     {
       method: "POST",
@@ -1452,7 +1669,7 @@ $("newProjectFromList").onclick = () => $("projectDialog").showModal();
 $("projectForm").onsubmit = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const response = await fetch("/api/v1/projects", {
+  const response = await apiFetch("/api/v1/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(Object.fromEntries(new FormData(form))),
@@ -1469,7 +1686,7 @@ $("projectEditForm").onsubmit = async (event) => {
   event.preventDefault();
   const project = currentProject();
   if (!project) return;
-  const response = await fetch(`/api/v1/projects/${project.uid}`, {
+  const response = await apiFetch(`/api/v1/projects/${project.uid}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -1547,7 +1764,7 @@ $("sprintForm").onsubmit = async (e) => {
   const form = e.currentTarget;
   const data = Object.fromEntries(new FormData(form));
   data.project_key = state.selectedProject;
-  const response = await fetch("/api/v1/sprints", {
+  const response = await apiFetch("/api/v1/sprints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1573,10 +1790,16 @@ $("editMetadata").onsubmit = async (event) => {
   button.disabled = true;
   await patchSelectedWorkItem({
     status: $("editStatus").value,
-    team: $("editTeam").value,
+    team_id: $("editTeam").value || null,
+    assignee_id: $("editAssignee").value || null,
+    reviewer_id: $("editReviewer").value || null,
+    follower_ids: [...$("editFollowers").selectedOptions].map(
+      (option) => option.value,
+    ),
     priority: $("editPriority").value || null,
     scheduled_for: $("editDate").value || null,
     scheduled_time: $("editTime").value || null,
+    transition_note: $("editTransitionNote").value.trim(),
   });
   button.disabled = false;
 };
@@ -1587,7 +1810,7 @@ $("activityForm").onsubmit = async (event) => {
   if (!body) return;
   const button = $("addActivity");
   button.disabled = true;
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/work-items/${state.selected.uid}/activities`,
     {
       method: "POST",
@@ -1618,14 +1841,22 @@ $("activityForm").onsubmit = async (event) => {
 $("toggleDone").onclick = async () => {
   if (!state.selected) return;
   $("toggleDone").disabled = true;
-  await patchSelectedWorkItem({
-    status:
-      state.selected.status === "done"
-        ? state.selected.kind === "backlog"
-          ? "triage"
-          : "open"
-        : "done",
-  });
+  const current = state.selected;
+  let status = "done";
+  let transition_note = "";
+  if (current.status === "done") {
+    status = "in_progress";
+    transition_note = window.prompt(t("work.transitionNote")) || "";
+    if (!transition_note) {
+      $("toggleDone").disabled = false;
+      return;
+    }
+  } else if (current.status === "backlog") status = "planned";
+  else if (current.status === "planned") status = "in_progress";
+  else if (current.status === "waiting") status = "in_progress";
+  else if (current.reviewer_id && current.status === "in_progress")
+    status = "review";
+  await patchSelectedWorkItem({ status, transition_note });
   $("toggleDone").disabled = false;
 };
 $("cancelWorkItemEdit").onclick = cancelWorkItemEdit;
@@ -1692,7 +1923,7 @@ $("createForm").onsubmit = async (e) => {
   if (!data.scheduled_for) data.scheduled_for = null;
   if (!data.scheduled_time) data.scheduled_time = null;
   if (!data.priority) data.priority = null;
-  const r = await fetch("/api/v1/work-items", {
+  const r = await apiFetch("/api/v1/work-items", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1753,7 +1984,7 @@ $("attachments").addEventListener("click", async (event) => {
   if (!remove || !state.selected) return;
   if (!globalThis.confirm(t("validation.removeEvidence"))) return;
   remove.disabled = true;
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/work-items/${state.selected.uid}/attachments/${encodeURIComponent(remove.dataset.attachmentName)}`,
     {
       method: "DELETE",
@@ -1810,6 +2041,10 @@ $("createEvidencePasteZone").addEventListener("paste", (event) =>
 for (const id of [
   "editStatus",
   "editTeam",
+  "editAssignee",
+  "editReviewer",
+  "editFollowers",
+  "editTransitionNote",
   "editPriority",
   "editDate",
   "editTime",
@@ -1849,6 +2084,30 @@ enableFileDrop("evidencePasteZone", uploadWorkItemFile);
 enableFileDrop("createEvidencePasteZone", (file, placement) =>
   uploadDraftFile(state.createDraftId, file, placement),
 );
+$("notificationButton").addEventListener("click", () => {
+  $("notificationPanel").hidden = !$("notificationPanel").hidden;
+});
+$("notificationPanel").addEventListener("click", async (event) => {
+  const link = event.target.closest("[data-notification-id]");
+  if (!link || !state.notificationEtag) return;
+  const response = await apiFetch(
+    `/api/v1/notifications/${link.dataset.notificationId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": state.notificationEtag,
+      },
+      body: JSON.stringify({ read: true }),
+    },
+  );
+  if (response.ok) state.notificationEtag = response.headers.get("etag");
+});
+$("logoutButton").addEventListener("click", async () => {
+  await apiFetch("/api/v1/logout", { method: "POST" });
+  state.session = null;
+  renderLogin();
+});
 load().catch((error) => {
   document.body.classList.remove("app-loading");
   document.querySelector("main").innerHTML =

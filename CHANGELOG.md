@@ -4,6 +4,16 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-28
+
+### Added
+
+- Invited Google OIDC identities, secure server-side sessions, CSRF protection and a loopback-only local developer profile.
+- Single-owner projects, global teams, project roles, reporters, assignees, reviewers and followers.
+- A guarded backlog-to-done workflow with conditional review, explanatory handoffs and identity-aware audit events.
+- Deduplicated in-app notifications and ownership/team controls in project and work-item views.
+- A dry-run-first, backed-up and idempotent collaboration migration.
+
 ## [0.9.0] - 2026-08-28
 
 ### Added
@@ -51,7 +61,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Priority levels, filters, scheduled times, Turkish and English UI modes.
 - Docker and GitHub Container Registry distribution.
 
-[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/mugulhan/sprintmark/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/mugulhan/sprintmark/compare/v0.6.2...v0.9.0
 [0.6.2]: https://github.com/mugulhan/sprintmark/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/mugulhan/sprintmark/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...v0.6.0

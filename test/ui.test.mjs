@@ -84,6 +84,11 @@ test("browser title follows the open work item and returns to the project", asyn
   assert.match(app, /state\.selected = null;\s+renderBreadcrumb\(\)/);
 });
 
+test("direct work item routes wait for the detail before load completes", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /if \(route\) await openItem\(route\[1\], false\);/);
+});
+
 test("calendar overflow buttons expand and collapse every item in a day", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /expandedDays: new Set\(\)/);

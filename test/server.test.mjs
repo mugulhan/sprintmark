@@ -28,7 +28,16 @@ async function fixture() {
   delete patchedRaw._path;
   delete patchedRaw._etag;
   await saveRecord(workspace, patchedRaw, existing.body);
-  const server = createWorkTrackerServer({ workspace });
+  const server = createWorkTrackerServer({
+    workspace,
+    authConfig: {
+      mode: "local",
+      sessionSecret: "test-only",
+      localEmail: "test@sprintmark.invalid",
+      localName: "Test admin",
+      csrfDisabled: true,
+    },
+  });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   return {
@@ -58,6 +67,18 @@ test("canonical and legacy routes use permanent redirects and unknown keys retur
   assert.equal(missing.status, 404);
 });
 
+test("disabled Google routes return an error without terminating local mode", async (context) => {
+  const { server, base } = await fixture();
+  context.after(() => server.close());
+  const disabled = await fetch(`${base}/auth/google/start`, {
+    redirect: "manual",
+  });
+  assert.equal(disabled.status, 404);
+  const health = await fetch(`${base}/healthz`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { status: "ok", version: "0.10.0" });
+});
+
 test("API returns ETags and rejects stale updates", async (context) => {
   const { server, item, base } = await fixture();
   context.after(() => server.close());
@@ -67,10 +88,23 @@ test("API returns ETags and rejects stale updates", async (context) => {
   const update = await fetch(`${base}/api/v1/work-items/${item.uid}`, {
     method: "PATCH",
     headers: { "content-type": "application/json", "if-match": etag },
-    body: JSON.stringify({ status: "done" }),
+    body: JSON.stringify({ status: "in_progress", assignee_id: "usr-local" }),
   });
   assert.equal(update.status, 200);
-  const completed = await update.json();
+  const started = await update.json();
+  const completionResponse = await fetch(
+    `${base}/api/v1/work-items/${item.uid}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "if-match": started._etag,
+      },
+      body: JSON.stringify({ status: "done" }),
+    },
+  );
+  assert.equal(completionResponse.status, 200);
+  const completed = await completionResponse.json();
   assert.equal(completed.status, "done");
   assert.ok(!Number.isNaN(Date.parse(completed.completed_at)));
   assert.equal(completed.completed_at, completed.updated_at);
@@ -81,7 +115,7 @@ test("API returns ETags and rejects stale updates", async (context) => {
   const stale = await fetch(`${base}/api/v1/work-items/${item.uid}`, {
     method: "PATCH",
     headers: { "content-type": "application/json", "if-match": etag },
-    body: JSON.stringify({ status: "open" }),
+    body: JSON.stringify({ status: "in_progress" }),
   });
   assert.equal(stale.status, 409);
 
@@ -93,7 +127,10 @@ test("API returns ETags and rejects stale updates", async (context) => {
         "content-type": "application/json",
         "if-match": completed._etag,
       },
-      body: JSON.stringify({ status: "open" }),
+      body: JSON.stringify({
+        status: "in_progress",
+        transition_note: "A new problem was found.",
+      }),
     },
   );
   assert.equal(reopenedResponse.status, 200);

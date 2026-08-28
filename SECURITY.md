@@ -8,4 +8,4 @@ Only the latest released minor version receives security fixes.
 
 Please use GitHub's private vulnerability reporting feature. Do not open a public issue with exploit details or private workspace data. Include affected version, reproduction steps, impact, and any suggested mitigation. You can expect an initial response within seven days.
 
-Sprintmark 0.9.0 has no authentication and must not be exposed directly to the internet.
+Sprintmark 0.10.0 supports invited Google OIDC identities, server-side sessions, CSRF protection and role-based project access. Production deployments must use HTTPS, a strong `SESSION_SECRET`, an exact `BASE_URL`, and a restricted `BOOTSTRAP_ADMIN_EMAILS` list. Never enable local authentication on a non-loopback interface.

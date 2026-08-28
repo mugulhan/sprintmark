@@ -9,6 +9,7 @@ import {
 import { basename, extname, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { contentEtag, newUid, slugify, UUID_PATTERN } from "./identity.mjs";
+import { actorSnapshot, legacyActor, PROJECT_ROLES } from "./collaboration.mjs";
 import { atomicWrite } from "./records.mjs";
 import {
   normalizeProjectDocumentReference,
@@ -23,7 +24,8 @@ export const PROJECT_STATUSES = new Set(["active", "archived"]);
 
 export function validateProject(project) {
   const errors = [];
-  if (project.schema_version !== 1) errors.push("schema_version must be 1");
+  if (![1, 2].includes(project.schema_version))
+    errors.push("schema_version must be 1 or 2");
   if (!UUID_PATTERN.test(project.uid || "")) errors.push("uid must be a UUID");
   if (!PROJECT_KEY_PATTERN.test(project.key || ""))
     errors.push("key is invalid");
@@ -40,7 +42,59 @@ export function validateProject(project) {
   if (!PROJECT_STATUSES.has(project.status)) errors.push("status is invalid");
   if (!Array.isArray(project.documents))
     errors.push("documents must be an array");
+  if (project.schema_version === 2) {
+    if (!/^usr-[0-9a-z-]+$/i.test(project.owner_user_id || ""))
+      errors.push("owner_user_id is invalid");
+    if (!Array.isArray(project.members))
+      errors.push("members must be an array");
+    else {
+      const memberIds = new Set();
+      for (const member of project.members) {
+        if (
+          !/^usr-[0-9a-z-]+$/i.test(member?.user_id || "") ||
+          !PROJECT_ROLES.has(member?.role) ||
+          memberIds.has(member?.user_id)
+        )
+          errors.push("project member is invalid or duplicate");
+        memberIds.add(member?.user_id);
+      }
+    }
+    if (
+      !Array.isArray(project.team_ids) ||
+      !project.team_ids.every((id) => /^team-[0-9a-z-]+$/i.test(id))
+    )
+      errors.push("team_ids is invalid");
+    if (!Array.isArray(project.activities))
+      errors.push("activities must be an array");
+  }
   return errors;
+}
+
+function normalizeProject(project, fallbackUserId = "usr-local") {
+  return {
+    ...project,
+    schema_version: 2,
+    owner_user_id: project.owner_user_id || fallbackUserId,
+    members: project.members || [],
+    team_ids: project.team_ids || [
+      "team-content-technical",
+      "team-web-development",
+    ],
+    activities: (project.activities || []).map((activity) => ({
+      ...activity,
+      actor: legacyActor(activity.actor),
+    })),
+  };
+}
+
+function projectActivity(type, actor, details = {}) {
+  return {
+    id: newUid(),
+    type,
+    actor: actorSnapshot(actor),
+    created_at: new Date().toISOString(),
+    ...details,
+  };
 }
 
 export class ProjectStore {
@@ -62,17 +116,17 @@ export class ProjectStore {
       const path = resolve(this.root, name);
       const raw = await readFile(path, "utf8");
       const parsed = YAML.parse(raw);
-      const project = {
+      const rawProject = {
         ...parsed,
         description: parsed.description || "",
         documents: parsed.documents || [],
         _path: path,
         _etag: contentEtag(raw),
       };
-      const errors = validateProject(project);
+      const errors = validateProject(rawProject);
       if (errors.length)
-        throw new Error(`${project.key || name}: ${errors.join(", ")}`);
-      projects.push(project);
+        throw new Error(`${rawProject.key || name}: ${errors.join(", ")}`);
+      projects.push(normalizeProject(rawProject));
     }
     const keys = new Set();
     const uids = new Set();
@@ -103,7 +157,7 @@ export class ProjectStore {
     return (await this.all()).find((project) => project.uid === uid) || null;
   }
 
-  async create(input) {
+  async create(input, actor = null) {
     const existing = await this.all();
     const max = Math.max(
       0,
@@ -111,7 +165,7 @@ export class ProjectStore {
     );
     const now = new Date().toISOString();
     const project = {
-      schema_version: 1,
+      schema_version: 2,
       uid: newUid(),
       key: `PRJ-${String(max + 1).padStart(3, "0")}`,
       code: String(input.code || "")
@@ -122,6 +176,10 @@ export class ProjectStore {
       description: String(input.description || "").trim(),
       status: input.status || "active",
       documents: [],
+      owner_user_id: actor?.id || "usr-local",
+      members: [],
+      team_ids: [...new Set(input.team_ids || [])],
+      activities: [projectActivity("created", actor)],
       created_at: now,
       updated_at: now,
     };
@@ -142,7 +200,7 @@ export class ProjectStore {
     return { ...project, _path: path, _etag: contentEtag(raw) };
   }
 
-  async patch(uid, input, ifMatch) {
+  async patch(uid, input, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     if (!existing)
       throw Object.assign(new Error("project not found"), { statusCode: 404 });
@@ -163,6 +221,16 @@ export class ProjectStore {
       name: String(input.name ?? existing.name).trim(),
       description: String(input.description ?? existing.description).trim(),
       updated_at: new Date().toISOString(),
+      activities: [
+        ...existing.activities,
+        projectActivity("changed", actor, {
+          changes: Object.keys(input).map((field) => ({
+            field,
+            from: existing[field] ?? null,
+            to: input[field] ?? null,
+          })),
+        }),
+      ],
     };
     next.slug = slugify(next.name);
     delete next._path;
@@ -182,6 +250,44 @@ export class ProjectStore {
     const raw = YAML.stringify(next, { lineWidth: 0 });
     await atomicWrite(existing._path, raw);
     return { ...next, _path: existing._path, _etag: contentEtag(raw) };
+  }
+
+  async setMembers(uid, input, ifMatch, actor = null) {
+    const existing = await this.byUid(uid);
+    this.assertWritable(existing, ifMatch);
+    const ownerUserId = input.owner_user_id || existing.owner_user_id;
+    const members = (input.members ?? existing.members).filter(
+      (member) => member.user_id !== ownerUserId,
+    );
+    const teamIds = [...new Set(input.team_ids ?? existing.team_ids)];
+    const ownershipChanged = ownerUserId !== existing.owner_user_id;
+    const activity = projectActivity(
+      ownershipChanged ? "ownership" : "changed",
+      actor,
+      {
+        changes: [
+          ...(ownershipChanged
+            ? [
+                {
+                  field: "owner_user_id",
+                  from: existing.owner_user_id,
+                  to: ownerUserId,
+                },
+              ]
+            : []),
+          { field: "members", to: members },
+          { field: "team_ids", to: teamIds },
+        ],
+      },
+    );
+    return this.save(existing, {
+      ...existing,
+      owner_user_id: ownerUserId,
+      members,
+      team_ids: teamIds,
+      activities: [...existing.activities, activity],
+      updated_at: activity.created_at,
+    });
   }
 
   async documents(uid) {
@@ -226,7 +332,7 @@ export class ProjectStore {
     return items;
   }
 
-  async addDocumentReference(uid, value, ifMatch) {
+  async addDocumentReference(uid, value, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     this.assertWritable(existing, ifMatch);
     if (existing.documents.length >= 50)
@@ -252,11 +358,17 @@ export class ProjectStore {
     return this.save(existing, {
       ...existing,
       documents: [...existing.documents, reference],
+      activities: [
+        ...existing.activities,
+        projectActivity("attachment_added", actor, {
+          details: { name: info.name },
+        }),
+      ],
       updated_at: new Date().toISOString(),
     });
   }
 
-  async addDocument(uid, file, ifMatch) {
+  async addDocument(uid, file, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     this.assertWritable(existing, ifMatch);
     if (existing.documents.length >= 50)
@@ -294,6 +406,12 @@ export class ProjectStore {
       const project = await this.save(existing, {
         ...existing,
         documents: [...existing.documents, document],
+        activities: [
+          ...existing.activities,
+          projectActivity("attachment_added", actor, {
+            details: { name: document.original_name },
+          }),
+        ],
         updated_at: new Date().toISOString(),
       });
       return { document, project };
@@ -303,7 +421,7 @@ export class ProjectStore {
     }
   }
 
-  async removeDocument(uid, index, ifMatch) {
+  async removeDocument(uid, index, ifMatch, actor = null) {
     const existing = await this.byUid(uid);
     this.assertWritable(existing, ifMatch);
     const documentIndex = Number(index);
@@ -325,6 +443,17 @@ export class ProjectStore {
       documents: existing.documents.filter(
         (_, itemIndex) => itemIndex !== documentIndex,
       ),
+      activities: [
+        ...existing.activities,
+        projectActivity("attachment_removed", actor, {
+          details: {
+            name:
+              typeof document === "string"
+                ? document
+                : document.original_name || document.name,
+          },
+        }),
+      ],
       updated_at: new Date().toISOString(),
     });
     if (path) await rm(path, { force: true });

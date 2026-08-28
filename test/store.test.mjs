@@ -63,7 +63,7 @@ test("store persists priority and planned time while rejecting invalid values", 
     scheduled_for: "2026-08-26",
     scheduled_time: "14:35",
   });
-  assert.equal(created.schema_version, 2);
+  assert.equal(created.schema_version, 3);
   assert.equal(created.priority, "critical");
   assert.equal(created.scheduled_time, "14:35");
   await assert.rejects(

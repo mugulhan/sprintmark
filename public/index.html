@@ -50,6 +50,19 @@
             Sorun Backlog'u</button
           ><button id="newItem" data-i18n="nav.newItem">Yeni iş</button>
         </nav>
+        <div id="accountMenu" class="account-menu" hidden>
+          <button
+            id="notificationButton"
+            type="button"
+            aria-label="Notifications"
+          >
+            <span aria-hidden="true">●</span>
+            <strong id="notificationCount">0</strong>
+          </button>
+          <span id="accountName"></span>
+          <button id="logoutButton" type="button">Sign out</button>
+        </div>
+        <aside id="notificationPanel" class="notification-panel" hidden></aside>
       </div>
       <div class="filters">
         <nav id="breadcrumb" class="breadcrumb" aria-label="Sayfa yolu"></nav>
@@ -249,18 +262,20 @@
             ></label>
             <label
               ><span data-i18n="work.team">Ekip</span
-              ><select id="editTeam">
-                <option
-                  value="content-technical"
-                  data-i18n="team.contentTechnical"
-                >
-                  İçerik / Teknik
-                </option>
-                <option value="web-development" data-i18n="team.webDevelopment">
-                  Web Yazılım
-                </option>
-              </select></label
-            >
+              ><select id="editTeam"></select
+            ></label>
+            <label
+              ><span data-i18n="work.assignee">Sorumlu</span
+              ><select id="editAssignee"></select
+            ></label>
+            <label
+              ><span data-i18n="work.reviewer">İnceleyici</span
+              ><select id="editReviewer"></select
+            ></label>
+            <label
+              ><span data-i18n="work.followers">Takipçiler</span
+              ><select id="editFollowers" multiple size="3"></select
+            ></label>
             <label
               ><span data-i18n="work.priority">Öncelik</span
               ><select id="editPriority">
@@ -300,6 +315,10 @@
             >
               Güncelle
             </button>
+            <label class="transition-note"
+              ><span data-i18n="work.transitionNote">Geçiş açıklaması</span
+              ><input id="editTransitionNote" maxlength="2000" />
+            </label>
           </form>
           <div id="editConflict" class="conflict-banner" hidden>
             <strong data-i18n="work.conflictTitle"
@@ -565,14 +584,7 @@
           ><input name="title" required maxlength="240" /></label
         ><label
           ><span data-i18n="work.team">Ekip</span
-          ><select name="team">
-            <option value="content-technical" data-i18n="team.contentTechnical">
-              İçerik / Teknik
-            </option>
-            <option value="web-development" data-i18n="team.webDevelopment">
-              Web Yazılım
-            </option>
-          </select></label
+          ><select name="team_id" id="createTeam"></select></label
         ><label
           ><span data-i18n="work.priority">Öncelik</span
           ><select name="priority">

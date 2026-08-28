@@ -41,7 +41,43 @@ header {
   flex-wrap: wrap;
 }
 .header-row {
+  position: relative;
   justify-content: space-between;
+}
+
+.account-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+  font-size: 0.84rem;
+}
+
+.notification-panel {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(390px, calc(100vw - 2rem));
+  max-height: 55vh;
+  overflow: auto;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 42px #052f6326;
+}
+
+.notification-panel a {
+  display: block;
+  padding: 0.65rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.transition-note {
+  flex-basis: 100%;
 }
 .brand-lockup {
   display: flex;
