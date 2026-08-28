@@ -22,6 +22,54 @@ const allowedPatchFields = new Set([
   "project_key",
 ]);
 
+const trackedPatchFields = [
+  "title",
+  "status",
+  "team",
+  "scheduled_for",
+  "scheduled_time",
+  "priority",
+  "page_url",
+  "body",
+  "project_key",
+];
+
+function createdActivity(record) {
+  return {
+    id: `created-${record.uid}`,
+    type: "created",
+    actor: "system",
+    created_at: record.created_at,
+  };
+}
+
+function normalizedActivities(record) {
+  return Array.isArray(record.activities) && record.activities.length
+    ? record.activities
+    : [createdActivity(record)];
+}
+
+function changeValue(field, value) {
+  if (field === "body") return undefined;
+  if (value === undefined || value === "") return null;
+  return value;
+}
+
+function patchChanges(existing, input) {
+  return trackedPatchFields.flatMap((field) => {
+    if (!Object.hasOwn(input, field)) return [];
+    const before = field === "body" ? existing.body : existing[field];
+    const after = input[field];
+    if (String(before ?? "") === String(after ?? "")) return [];
+    const change = { field };
+    const from = changeValue(field, before);
+    const to = changeValue(field, after);
+    if (from !== undefined) change.from = from;
+    if (to !== undefined) change.to = to;
+    return [change];
+  });
+}
+
 export class WorkItemStore {
   constructor(workspace) {
     this.workspace = workspace;
@@ -30,7 +78,10 @@ export class WorkItemStore {
   async all() {
     const records = await loadRecords(this.workspace);
     assertRecordSet(records);
-    return records;
+    return records.map((record) => ({
+      ...record,
+      activities: normalizedActivities(record),
+    }));
   }
 
   async byKey(key) {
@@ -74,7 +125,9 @@ export class WorkItemStore {
       legacy_ids: [],
       legacy_routes: [],
       attachments,
+      activities: [],
     };
+    record.activities.push(createdActivity(record));
     const errors = validateRecord(record);
     if (errors.length)
       throw Object.assign(new Error(errors.join(", ")), { statusCode: 400 });
@@ -128,10 +181,34 @@ export class WorkItemStore {
         });
     }
     const now = new Date().toISOString();
+    const changes = patchChanges(existing, input);
+    const promotedAttachments = attachments.map((attachment) => ({
+      id: newUid(),
+      type: "attachment_added",
+      actor: "system",
+      created_at: now,
+      details: { name: attachment.original_name || attachment.name },
+    }));
+    const changeActivity = changes.length
+      ? [
+          {
+            id: newUid(),
+            type: "changed",
+            actor: "system",
+            created_at: now,
+            changes,
+          },
+        ]
+      : [];
     const next = {
       ...existing,
       ...input,
       attachments: [...existing.attachments, ...attachments],
+      activities: [
+        ...normalizedActivities(existing),
+        ...changeActivity,
+        ...promotedAttachments,
+      ],
       updated_at: now,
     };
     if (existing.status !== "done" && next.status === "done")
@@ -192,10 +269,21 @@ export class WorkItemStore {
       url: `/attachments/${uid}/${name}`,
       placement: placement === "body" ? "body" : "evidence",
     };
+    const now = new Date().toISOString();
     const next = {
       ...existing,
       attachments: [...existing.attachments, attachment],
-      updated_at: new Date().toISOString(),
+      activities: [
+        ...normalizedActivities(existing),
+        {
+          id: newUid(),
+          type: "attachment_added",
+          actor: "system",
+          created_at: now,
+          details: { name: attachment.original_name },
+        },
+      ],
+      updated_at: now,
     };
     delete next.body;
     delete next._path;
@@ -248,6 +336,16 @@ export class WorkItemStore {
       attachments: existing.attachments.filter(
         (entry) => typeof entry === "string" || entry.name !== name,
       ),
+      activities: [
+        ...normalizedActivities(existing),
+        {
+          id: newUid(),
+          type: "attachment_removed",
+          actor: "system",
+          created_at: new Date().toISOString(),
+          details: { name: attachment.original_name || attachment.name },
+        },
+      ],
       updated_at: new Date().toISOString(),
     };
     delete next.body;
@@ -257,6 +355,55 @@ export class WorkItemStore {
     await generateSummaries(this.workspace);
     if (path) await rm(path, { force: true });
     return { ...next, body: existing.body, _etag: saved.etag };
+  }
+
+  async addComment(uid, body, ifMatch) {
+    const existing = await this.byUid(uid);
+    if (!existing)
+      throw Object.assign(new Error("work item not found"), {
+        statusCode: 404,
+      });
+    if (!ifMatch || ifMatch !== existing._etag)
+      throw Object.assign(new Error("record changed; reload before saving"), {
+        statusCode: 409,
+      });
+    const text = String(body || "").trim();
+    if (!text)
+      throw Object.assign(new Error("comment body is required"), {
+        statusCode: 400,
+      });
+    if (text.length > 10000)
+      throw Object.assign(
+        new Error("comment must not exceed 10000 characters"),
+        {
+          statusCode: 413,
+        },
+      );
+    const now = new Date().toISOString();
+    const activity = {
+      id: newUid(),
+      type: "comment",
+      actor: "user",
+      created_at: now,
+      body: text,
+    };
+    const next = {
+      ...existing,
+      activities: [...normalizedActivities(existing), activity],
+      updated_at: now,
+    };
+    delete next.body;
+    delete next._path;
+    delete next._etag;
+    const errors = validateRecord(next);
+    if (errors.length)
+      throw Object.assign(new Error(errors.join(", ")), { statusCode: 400 });
+    const saved = await saveRecord(this.workspace, next, existing.body);
+    await generateSummaries(this.workspace);
+    return {
+      activity,
+      record: { ...next, body: existing.body, _etag: saved.etag },
+    };
   }
 
   async attachmentPath(uid, name) {

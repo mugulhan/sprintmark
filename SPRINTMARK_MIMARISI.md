@@ -55,6 +55,7 @@ Başlıca API grupları:
 
 - `/api/v1/projects`
 - `/api/v1/work-items`
+- `/api/v1/work-items/{uid}/activities`
 - `/api/v1/sprints`
 - `/api/v1/drafts`
 - Proje dokümanı ve iş kaydı eki alt uçları
@@ -79,6 +80,16 @@ Her proje `PRJ-xxx` biçiminde değişmez bir anahtara ve iş kayıtlarında kul
 ### 4.2 İş kaydı
 
 İş kayıtları proje kodundan üretilen `SPM-0001` gibi anahtarlar kullanır. YAML metadatası; tür, proje, durum, ekip, öncelik, planlama, tamamlanma zamanı ve ekleri taşır. Açıklama gövdesi Markdown olarak saklanır.
+
+#### Aktivite akışı
+
+Her iş kaydı `activities` alanında append-only bir geçmiş taşır. Yeni kayıtlarda oluşturma olayı otomatik eklenir; metadata/açıklama değişiklikleri ile dosya ekleme ve kaldırma işlemleri sistem olayı olarak kaydedilir. Kullanıcı notları `POST /api/v1/work-items/{uid}/activities` üzerinden eklenir.
+
+Aktivite nesnesi değişmez bir `id`, `type`, `actor` ve `created_at` değeri içerir. Değişiklik olayları değişen alanları, dosya olayları güvenli dosya adını, kullanıcı notları ise en fazla 10.000 karakterlik metni taşır. Not ekleme de dahil bütün yazımlar güncel `If-Match` başlığını zorunlu tutar. Eski kayıtlarda `activities` bulunmuyorsa oluşturma zamanı üzerinden geriye uyumlu bir başlangıç olayı üretilir ve kayıt bir sonraki yazımda yeni modele doğal biçimde alınır; toplu migrasyon gerekmez.
+
+Görev ekranı olayları en yeni kayıt üstte olacak şekilde gösterir. Kullanıcı verisi HTML olarak yorumlanmaz; kaçış uygulanarak sunulur. Sistem etiketleri Türkçe ve İngilizce i18n kataloğundan üretilir.
+
+Takvim ve backlog tarafından kullanılan iş kaydı koleksiyonu aktivite dizisini taşımaz; geçmiş yalnız tekil görev yanıtında döndürülür. Böylece zamanla büyüyen not geçmişi ana liste API’sinin yükünü artırmaz.
 
 ### 4.3 Sprint
 

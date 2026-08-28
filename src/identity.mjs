@@ -16,6 +16,25 @@ export const STATUSES = new Set([
 export const TEAMS = new Set(["content-technical", "web-development"]);
 export const KINDS = new Set(["task", "backlog"]);
 export const PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+export const ACTIVITY_TYPES = new Set([
+  "created",
+  "changed",
+  "comment",
+  "attachment_added",
+  "attachment_removed",
+]);
+export const ACTIVITY_ACTORS = new Set(["system", "user"]);
+export const ACTIVITY_FIELDS = new Set([
+  "title",
+  "status",
+  "team",
+  "scheduled_for",
+  "scheduled_time",
+  "priority",
+  "page_url",
+  "body",
+  "project_key",
+]);
 
 const turkishMap = new Map([
   ["ç", "c"],
@@ -96,5 +115,58 @@ export function validateRecord(record) {
     errors.push("legacy_routes must be an array");
   if (!Array.isArray(record.attachments))
     errors.push("attachments must be an array");
+  if (record.activities !== undefined && !Array.isArray(record.activities)) {
+    errors.push("activities must be an array");
+  } else {
+    const activityIds = new Set();
+    for (const activity of record.activities || []) {
+      if (
+        !activity ||
+        typeof activity !== "object" ||
+        !String(activity.id || "").trim()
+      ) {
+        errors.push("activity id is required");
+        continue;
+      }
+      if (activityIds.has(activity.id)) errors.push("activity id is duplicate");
+      activityIds.add(activity.id);
+      if (!ACTIVITY_TYPES.has(activity.type))
+        errors.push("activity type is invalid");
+      if (!ACTIVITY_ACTORS.has(activity.actor))
+        errors.push("activity actor is invalid");
+      if (
+        typeof activity.created_at !== "string" ||
+        Number.isNaN(Date.parse(activity.created_at))
+      ) {
+        errors.push("activity created_at must be an ISO timestamp");
+      }
+      if (
+        activity.type === "comment" &&
+        (!String(activity.body || "").trim() ||
+          String(activity.body).length > 10000)
+      ) {
+        errors.push("comment activity body is invalid");
+      }
+      if (
+        activity.type === "changed" &&
+        (!Array.isArray(activity.changes) || !activity.changes.length)
+      ) {
+        errors.push("changed activity requires changes");
+      } else if (activity.type === "changed") {
+        for (const change of activity.changes) {
+          if (!change || !ACTIVITY_FIELDS.has(change.field))
+            errors.push("activity change field is invalid");
+        }
+      }
+      if (
+        ["attachment_added", "attachment_removed"].includes(activity.type) &&
+        (!activity.details ||
+          !String(activity.details.name || "").trim() ||
+          String(activity.details.name).length > 512)
+      ) {
+        errors.push("attachment activity details are invalid");
+      }
+    }
+  }
   return errors;
 }

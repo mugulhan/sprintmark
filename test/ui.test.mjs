@@ -48,6 +48,23 @@ test("task viewer links always open in a separate safe tab", async () => {
   assert.match(app, /openLinksInNewTab\(\$\("detailBody"\)\)/);
 });
 
+test("work item detail exposes a persistent localized activity timeline", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="activityForm"/);
+  assert.match(html, /id="activityBody"/);
+  assert.match(html, /id="activityList"/);
+  assert.match(app, /function renderActivity\(item\)/);
+  assert.match(app, /\/activities`/);
+  assert.match(app, /"If-Match": state\.selected\._etag/);
+  assert.match(app, /escapeHtml\(activity\.body\)/);
+  assert.match(styles, /\.activity-list/);
+  assert.match(styles, /\.activity-entry/);
+});
+
 test("browser title follows the open work item and returns to the project", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /function updateDocumentTitle\(item = null\)/);

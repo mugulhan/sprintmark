@@ -74,6 +74,10 @@ test("API returns ETags and rejects stale updates", async (context) => {
   assert.equal(completed.status, "done");
   assert.ok(!Number.isNaN(Date.parse(completed.completed_at)));
   assert.equal(completed.completed_at, completed.updated_at);
+  assert.deepEqual(
+    completed.activities.at(-1).changes.map((change) => change.field),
+    ["status"],
+  );
   const stale = await fetch(`${base}/api/v1/work-items/${item.uid}`, {
     method: "PATCH",
     headers: { "content-type": "application/json", "if-match": etag },
@@ -95,6 +99,51 @@ test("API returns ETags and rejects stale updates", async (context) => {
   assert.equal(reopenedResponse.status, 200);
   const reopened = await reopenedResponse.json();
   assert.equal(reopened.completed_at, null);
+});
+
+test("activity API appends notes and returns the updated work item", async (context) => {
+  const { server, item, base } = await fixture();
+  context.after(() => server.close());
+  const currentResponse = await fetch(`${base}/api/v1/work-items/${item.key}`);
+  const current = await currentResponse.json();
+  const response = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/activities`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "if-match": current._etag,
+      },
+      body: JSON.stringify({ body: "Release completed." }),
+    },
+  );
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  assert.equal(result.activity.type, "comment");
+  assert.equal(result.record.activities.at(-1).body, "Release completed.");
+  assert.equal(response.headers.get("etag"), result.record._etag);
+
+  const stale = await fetch(
+    `${base}/api/v1/work-items/${item.uid}/activities`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "if-match": current._etag,
+      },
+      body: JSON.stringify({ body: "Stale comment" }),
+    },
+  );
+  assert.equal(stale.status, 409);
+
+  const collection = await fetch(`${base}/api/v1/work-items`).then((result) =>
+    result.json(),
+  );
+  assert.equal(Object.hasOwn(collection.items[0], "activities"), false);
+  const detail = await fetch(`${base}/api/v1/work-items/${item.key}`).then(
+    (result) => result.json(),
+  );
+  assert.ok(detail.activities.length >= 2);
 });
 
 test("sprint API persists valid ranges and rejects reversed dates", async (context) => {

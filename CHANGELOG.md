@@ -4,6 +4,14 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-28
+
+### Added
+
+- İş kayıtlarına kalıcı kullanıcı notları ve otomatik değişiklik geçmişi içeren Jira benzeri aktivite akışı eklendi.
+- Durum, ekip, öncelik, planlama, açıklama ve dosya işlemleri append-only olaylar olarak kaydediliyor.
+- Aktivite yazımları ETag/`If-Match` eşzamanlılık korumasına alındı ve Türkçe/İngilizce arayüz desteği eklendi.
+
 ## [0.6.2] - 2026-08-26
 
 ### Changed

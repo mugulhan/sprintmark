@@ -110,6 +110,41 @@ test("store timestamps done transitions and clears completion when reopened", as
   );
 });
 
+test("store keeps an append-only activity history and guards comments with ETags", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-activity-"));
+  const store = new WorkItemStore(workspace);
+  const created = await store.create({ title: "Activity task" });
+  assert.equal(created.activities.length, 1);
+  assert.equal(created.activities[0].type, "created");
+
+  const changed = await store.patch(
+    created.uid,
+    { status: "done", priority: "high" },
+    created._etag,
+  );
+  assert.equal(changed.activities.at(-1).type, "changed");
+  assert.deepEqual(
+    changed.activities.at(-1).changes.map((change) => change.field),
+    ["status", "priority"],
+  );
+
+  await assert.rejects(
+    () => store.addComment(created.uid, "Stale note", created._etag),
+    (error) => error.statusCode === 409,
+  );
+  const commented = await store.addComment(
+    created.uid,
+    "Deployment verified.",
+    changed._etag,
+  );
+  assert.equal(commented.activity.type, "comment");
+  assert.equal(commented.record.activities.at(-1).body, "Deployment verified.");
+  await assert.rejects(
+    () => store.addComment(created.uid, "   ", commented.record._etag),
+    (error) => error.statusCode === 400,
+  );
+});
+
 test("attachment guard rejects unsupported and oversized files", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "sprintmark-store-"));
   const store = new WorkItemStore(workspace);

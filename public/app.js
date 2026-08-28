@@ -786,6 +786,76 @@ function setView(view, updateAddress = true) {
   }
   render();
 }
+function activityFieldName(field) {
+  return (
+    {
+      title: t("activity.field.title"),
+      status: t("activity.field.status"),
+      team: t("activity.field.team"),
+      scheduled_for: t("activity.field.scheduledDate"),
+      scheduled_time: t("activity.field.scheduledTime"),
+      priority: t("activity.field.priority"),
+      page_url: t("activity.field.pageUrl"),
+      body: t("activity.field.description"),
+      project_key: t("activity.field.project"),
+    }[field] || field
+  );
+}
+function activityValue(field, value) {
+  if (value === null || value === undefined || value === "")
+    return t("activity.emptyValue");
+  if (field === "status") return statusName(value);
+  if (field === "team") return teamName(value);
+  if (field === "priority") return priorityName(value);
+  return String(value);
+}
+function activityDescription(activity) {
+  if (activity.type === "created") return t("activity.created");
+  if (activity.type === "comment")
+    return `<p class="activity-comment">${escapeHtml(activity.body).replace(/\n/g, "<br>")}</p>`;
+  if (activity.type === "attachment_added")
+    return t("activity.attachmentAdded", {
+      name: escapeHtml(activity.details?.name || t("file.generic")),
+    });
+  if (activity.type === "attachment_removed")
+    return t("activity.attachmentRemoved", {
+      name: escapeHtml(activity.details?.name || t("file.generic")),
+    });
+  if (activity.type === "changed") {
+    const changes = (activity.changes || [])
+      .map((change) => {
+        const field = escapeHtml(activityFieldName(change.field));
+        if (change.field === "body")
+          return `<li>${t("activity.descriptionUpdated")}</li>`;
+        return `<li>${t("activity.changedFromTo", {
+          field,
+          from: escapeHtml(activityValue(change.field, change.from)),
+          to: escapeHtml(activityValue(change.field, change.to)),
+        })}</li>`;
+      })
+      .join("");
+    return `<ul class="activity-changes">${changes}</ul>`;
+  }
+  return t("activity.updated");
+}
+function renderActivity(item) {
+  const activities = [...(item.activities || [])].sort((a, b) =>
+    String(b.created_at).localeCompare(String(a.created_at)),
+  );
+  $("activityCount").textContent = tp("activity.count", activities.length);
+  $("activityList").innerHTML = activities.length
+    ? activities
+        .map(
+          (activity) =>
+            `<li class="activity-entry activity-${escapeHtml(activity.type)}"><span class="activity-marker" aria-hidden="true"></span><div class="activity-entry-content"><header><strong>${t(
+              activity.actor === "user"
+                ? "activity.actorUser"
+                : "activity.actorSystem",
+            )}</strong><time datetime="${escapeHtml(activity.created_at)}" title="${escapeHtml(localDateTime(activity.created_at))}">${escapeHtml(relativeElapsed(activity.created_at))}</time></header><div>${activityDescription(activity)}</div></div></li>`,
+        )
+        .join("")
+    : `<li class="activity-empty">${t("activity.empty")}</li>`;
+}
 function renderWorkItemChrome(item) {
   $("detailTitle").textContent = item.title;
   $("detailKey").textContent = item.key;
@@ -810,6 +880,7 @@ function renderWorkItemChrome(item) {
   $("facts").innerHTML =
     `<dt>${t("work.project")}</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>${t("work.calendar")}</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>${t("work.priority")}</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>${t("work.created")}</dt><dd>${localDateTime(item.created_at)}</dd><dt>${t("work.updated")}</dt><dd>${localDateTime(item.updated_at)}</dd><dt>${t("work.legacyId")}</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
   renderEvidence(item);
+  renderActivity(item);
   translateDocument();
 }
 async function openItem(key, push = true) {
@@ -1508,6 +1579,41 @@ $("editMetadata").onsubmit = async (event) => {
     scheduled_time: $("editTime").value || null,
   });
   button.disabled = false;
+};
+$("activityForm").onsubmit = async (event) => {
+  event.preventDefault();
+  if (!state.selected) return;
+  const body = $("activityBody").value.trim();
+  if (!body) return;
+  const button = $("addActivity");
+  button.disabled = true;
+  const response = await fetch(
+    `/api/v1/work-items/${state.selected.uid}/activities`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": state.selected._etag,
+      },
+      body: JSON.stringify({ body }),
+    },
+  );
+  button.disabled = false;
+  if (response.status === 409) {
+    alert(t("work.conflictReload"));
+    await openItem(state.selected.key, false);
+    return;
+  }
+  if (!response.ok)
+    return alert((await response.json()).error || t("error.activityAdd"));
+  const result = await response.json();
+  state.selected = result.record;
+  state.items = state.items.map((item) =>
+    item.uid === result.record.uid ? result.record : item,
+  );
+  $("activityBody").value = "";
+  renderWorkItemChrome(result.record);
+  render();
 };
 $("toggleDone").onclick = async () => {
   if (!state.selected) return;

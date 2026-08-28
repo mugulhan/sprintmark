@@ -23,7 +23,7 @@ const toastUiRoot = resolve(
   "dist",
 );
 const domPurifyRoot = resolve(appRoot, "node_modules", "dompurify", "dist");
-const VERSION = "0.8.0";
+const VERSION = "0.9.0";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -149,9 +149,10 @@ async function attachmentBody(req) {
   };
 }
 
-function publicRecord(record) {
+function publicRecord(record, { includeActivities = true } = {}) {
   const safe = { ...record };
   delete safe._path;
+  if (!includeActivities) delete safe.activities;
   return safe;
 }
 
@@ -395,7 +396,9 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
             (r) => r.project_key === url.searchParams.get("project_key"),
           );
         return send(res, 200, {
-          items: records.map(publicRecord),
+          items: records.map((record) =>
+            publicRecord(record, { includeActivities: false }),
+          ),
           count: records.length,
         });
       }
@@ -451,6 +454,20 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
         const items = await store.fileReferences(fileReferencesApi[1]);
         return send(res, 200, { items, count: items.length });
       }
+      const activityApi = path.match(
+        /^\/api\/v1\/work-items\/([0-9a-f-]{36})\/activities$/i,
+      );
+      if (activityApi && req.method === "POST") {
+        if (!writeAllowed(req))
+          return send(res, 403, { error: "origin_not_allowed" });
+        const input = await jsonBody(req);
+        const result = await store.addComment(
+          activityApi[1],
+          input.body,
+          req.headers["if-match"],
+        );
+        return send(res, 201, result, { ETag: result.record._etag });
+      }
       const uidApi = path.match(/^\/api\/v1\/work-items\/([0-9a-f-]{36})$/i);
       if (uidApi && req.method === "PATCH") {
         if (!writeAllowed(req))
@@ -467,9 +484,12 @@ export function createWorkTrackerServer({ workspace = defaultWorkspace } = {}) {
               input.body,
             );
           delete input.draft_id;
+          const patchInput = { ...input };
+          if (promotion) patchInput.body = promotion.body;
+          else if (!Object.hasOwn(input, "body")) delete patchInput.body;
           const record = await store.patch(
             uidApi[1],
-            { ...input, body: promotion?.body ?? input.body },
+            patchInput,
             req.headers["if-match"],
             { attachments: promotion?.attachments || [] },
           );

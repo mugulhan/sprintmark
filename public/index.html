@@ -327,6 +327,44 @@
               Kaydet
             </button>
           </div>
+          <section class="activity-section" aria-labelledby="activityTitle">
+            <div class="activity-heading">
+              <div>
+                <h3 id="activityTitle" data-i18n="activity.title">Aktivite</h3>
+                <p data-i18n="activity.subtitle">
+                  Notları ve görevde yapılan değişiklikleri kronolojik olarak
+                  izleyin.
+                </p>
+              </div>
+              <span id="activityCount" class="activity-count"></span>
+            </div>
+            <form id="activityForm" class="activity-composer">
+              <label for="activityBody" data-i18n="activity.addNote">
+                Not ekle
+              </label>
+              <textarea
+                id="activityBody"
+                maxlength="10000"
+                rows="3"
+                placeholder="Bu görevle ilgili bir güncelleme yazın…"
+                data-i18n-placeholder="activity.placeholder"
+              ></textarea>
+              <div class="activity-composer-actions">
+                <small data-i18n="activity.noteHelp">
+                  Notlar görev geçmişinde kalıcı olarak saklanır.
+                </small>
+                <button
+                  id="addActivity"
+                  type="submit"
+                  class="primary"
+                  data-i18n="activity.submit"
+                >
+                  Notu ekle
+                </button>
+              </div>
+            </form>
+            <ol id="activityList" class="activity-list"></ol>
+          </section>
         </div>
       </div>
     </dialog>
