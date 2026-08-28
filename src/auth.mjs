@@ -376,44 +376,57 @@ export class AuthService {
   }
 }
 
-export function authConfigFromEnv(host = "127.0.0.1", port = 4310) {
+export function authConfigFromEnv(
+  host = "127.0.0.1",
+  port = 4310,
+  environment = process.env,
+) {
   const loopback = ["127.0.0.1", "localhost", "::1"].includes(host);
-  const configuredMode = process.env.SPRINTMARK_AUTH_MODE;
-  const mode = configuredMode || (process.env.CLIENT_ID ? "google" : "local");
+  const configuredMode = environment.SPRINTMARK_AUTH_MODE;
+  const mode = configuredMode || (environment.CLIENT_ID ? "google" : "local");
   if (mode === "local" && !loopback)
     throw new Error("local authentication mode is allowed only on loopback");
   if (!new Set(["local", "google"]).has(mode))
     throw new Error("SPRINTMARK_AUTH_MODE must be local or google");
   const baseUrl =
-    process.env.BASE_URL ||
+    environment.BASE_URL ||
     `http://${host === "::1" ? "localhost" : host}:${port}`;
   if (
     mode === "google" &&
-    (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET)
+    (!environment.CLIENT_ID || !environment.CLIENT_SECRET)
   )
     throw new Error("CLIENT_ID and CLIENT_SECRET are required for Google mode");
-  if (mode === "google" && !process.env.SESSION_SECRET)
+  if (mode === "google" && !environment.SESSION_SECRET)
     throw new Error("SESSION_SECRET is required for Google mode");
   if (
     mode === "google" &&
-    process.env.SESSION_SECRET &&
-    process.env.SESSION_SECRET.length < 32
+    environment.SESSION_SECRET &&
+    environment.SESSION_SECRET.length < 32
   )
     throw new Error("SESSION_SECRET must be at least 32 characters");
   const baseUrlObject = new URL(baseUrl);
-  if (mode === "google" && baseUrlObject.protocol !== "https:")
-    throw new Error("Google authentication requires an HTTPS BASE_URL");
+  const loopbackBaseUrl = ["127.0.0.1", "localhost", "::1"].includes(
+    baseUrlObject.hostname,
+  );
+  if (
+    mode === "google" &&
+    baseUrlObject.protocol !== "https:" &&
+    !(baseUrlObject.protocol === "http:" && loopbackBaseUrl)
+  )
+    throw new Error(
+      "Google authentication requires HTTPS except on a loopback BASE_URL",
+    );
   return {
     mode,
-    clientId: process.env.CLIENT_ID || null,
-    clientSecret: process.env.CLIENT_SECRET || null,
+    clientId: environment.CLIENT_ID || null,
+    clientSecret: environment.CLIENT_SECRET || null,
     sessionSecret:
-      process.env.SESSION_SECRET || "local-development-session-secret",
+      environment.SESSION_SECRET || "local-development-session-secret",
     baseUrl: baseUrl.replace(/\/$/, ""),
-    secureCookies: mode === "google" || baseUrlObject.protocol === "https:",
-    bootstrapAdminEmails: process.env.BOOTSTRAP_ADMIN_EMAILS || "",
-    localName: process.env.SPRINTMARK_LOCAL_USER_NAME || "Local user",
+    secureCookies: baseUrlObject.protocol === "https:",
+    bootstrapAdminEmails: environment.BOOTSTRAP_ADMIN_EMAILS || "",
+    localName: environment.SPRINTMARK_LOCAL_USER_NAME || "Local user",
     localEmail:
-      process.env.SPRINTMARK_LOCAL_USER_EMAIL || "local@sprintmark.invalid",
+      environment.SPRINTMARK_LOCAL_USER_EMAIL || "local@sprintmark.invalid",
   };
 }

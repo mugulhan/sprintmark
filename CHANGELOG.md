@@ -4,6 +4,16 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Added
+
+- Added an interactive and automation-friendly `setup:auth` wizard that validates Google/local configuration, generates a session secret and writes an ignored environment file.
+- Added a complete Google Cloud OAuth setup and troubleshooting guide for local, Docker and production deployments.
+
+### Changed
+
+- `npm start` automatically loads `.env` and `.env.local` when present.
+- Google authentication permits HTTP only for Google-supported loopback callback URLs; non-loopback deployments still require HTTPS.
+
 ### Fixed
 
 - Local developer sign-out now revokes a real server-side session and remains signed out after refresh.

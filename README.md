@@ -21,11 +21,20 @@ npm ci
 npm start
 ```
 
-Open <http://127.0.0.1:4310>. The first workspace is empty; create a project in the UI or run `npm run seed:demo`.
+Open <http://127.0.0.1:4310> and continue with the explicit loopback-local profile. The first workspace is empty; create a project in the UI or run `npm run seed:demo`.
+
+For Google sign-in, create a Google Web OAuth client once and run the guided setup. The wizard validates the configuration, generates a session secret and writes an ignored `.env.local` file:
+
+```bash
+npm run setup:auth
+npm start
+```
+
+See [Google sign-in setup](docs/GOOGLE_AUTH_SETUP.md) for the exact Cloud Console redirect URI, test-user rules, non-interactive setup and production deployment guidance.
 
 ## Docker
 
-Copy `.env.example` to `.env`, configure the Google client, an HTTPS `BASE_URL`, a strong session secret and at least one bootstrap administrator before starting the production container.
+Run `npm run setup:auth -- --output=.env` or configure the Google client, an HTTPS `BASE_URL`, a strong session secret and at least one bootstrap administrator in the deployment secret store before starting the production container.
 
 ```bash
 docker compose up --build
