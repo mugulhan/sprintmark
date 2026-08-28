@@ -189,7 +189,7 @@ export class AuthService {
   }
 
   async session(req) {
-    if (this.config.mode === "local") {
+    if (this.config.mode === "local" && this.config.localAutoLogin) {
       const user = await this.collaboration.userById("usr-local");
       return user
         ? { user, csrf_token: "local-csrf", mode: "local", expires_at: null }
@@ -217,12 +217,59 @@ export class AuthService {
     }
     const user = await this.collaboration.userById(stored.user_id);
     if (!user || user.status !== "active") return null;
+    const mode = stored.mode || "google";
+    if (mode !== this.config.mode) return null;
     return {
       user,
       csrf_token: stored.csrf_token,
-      mode: "google",
+      mode,
       expires_at: stored.expires_at,
     };
+  }
+
+  async issueSession(res, user, mode, extraCookies = []) {
+    const sessionToken = token(48);
+    const now = Date.now();
+    const session = {
+      user_id: user.id,
+      mode,
+      csrf_token: token(32),
+      created_at: new Date(now).toISOString(),
+      idle_expires_at: new Date(now + SESSION_IDLE_MS).toISOString(),
+      expires_at: new Date(now + SESSION_ABSOLUTE_MS).toISOString(),
+    };
+    await atomicWrite(
+      resolve(
+        this.sessionRoot,
+        `${secretDigest(sessionToken, this.config.sessionSecret)}.yml`,
+      ),
+      YAML.stringify(session),
+    );
+    const sessionCookie = cookie(SESSION_COOKIE, sessionToken, {
+      secure: this.config.secureCookies,
+      maxAge: SESSION_ABSOLUTE_MS / 1000,
+    });
+    res.writeHead(302, {
+      Location: "/projects/",
+      "Set-Cookie": extraCookies.length
+        ? [sessionCookie, ...extraCookies]
+        : sessionCookie,
+      "Cache-Control": "no-store",
+    });
+    res.end();
+  }
+
+  async startLocal(res) {
+    if (this.config.mode !== "local")
+      throw Object.assign(new Error("Local authentication is disabled"), {
+        statusCode: 404,
+      });
+    const user = await this.collaboration.userById("usr-local");
+    if (!user || user.status !== "active")
+      throw Object.assign(new Error("Local user is unavailable"), {
+        statusCode: 403,
+      });
+    return this.issueSession(res, user, "local");
   }
 
   assertCsrf(req, session) {
@@ -300,37 +347,12 @@ export class AuthService {
       attempt.nonce,
     );
     const { user } = await this.collaboration.activateGoogleUser(claims);
-    const sessionToken = token(48);
-    const now = Date.now();
-    const session = {
-      user_id: user.id,
-      csrf_token: token(32),
-      created_at: new Date(now).toISOString(),
-      idle_expires_at: new Date(now + SESSION_IDLE_MS).toISOString(),
-      expires_at: new Date(now + SESSION_ABSOLUTE_MS).toISOString(),
-    };
-    await atomicWrite(
-      resolve(
-        this.sessionRoot,
-        `${secretDigest(sessionToken, this.config.sessionSecret)}.yml`,
-      ),
-      YAML.stringify(session),
-    );
-    res.writeHead(302, {
-      Location: "/projects/",
-      "Set-Cookie": [
-        cookie(SESSION_COOKIE, sessionToken, {
-          secure: this.config.secureCookies,
-          maxAge: SESSION_ABSOLUTE_MS / 1000,
-        }),
-        cookie(OAUTH_COOKIE, "", {
-          secure: this.config.secureCookies,
-          clear: true,
-        }),
-      ],
-      "Cache-Control": "no-store",
-    });
-    res.end();
+    return this.issueSession(res, user, "google", [
+      cookie(OAUTH_COOKIE, "", {
+        secure: this.config.secureCookies,
+        clear: true,
+      }),
+    ]);
   }
 
   async logout(req, res) {

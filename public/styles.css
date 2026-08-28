@@ -33,6 +33,13 @@ header {
   padding: 13px max(18px, calc((100vw - 1600px) / 2));
   box-shadow: 0 3px 15px #17334e0b;
 }
+
+body.auth-required-view header nav,
+body.auth-required-view header .filters,
+body.auth-required-view header .account-menu,
+body.auth-required-view header .notification-panel {
+  display: none !important;
+}
 .header-row,
 .filters {
   display: flex;

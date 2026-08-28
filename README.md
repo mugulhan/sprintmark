@@ -64,7 +64,7 @@ Status, priority and schedule metadata can be changed directly from the work-ite
 
 Each work item also has a persistent activity timeline. User notes, field changes and evidence-file operations are stored with timestamps and protected by optimistic concurrency; activity history is returned only by the detail API so calendar and backlog payloads remain compact.
 
-Google mode stores only an opaque server-side session cookie. Google access and refresh tokens are never persisted. Every mutation derives its actor from that session and requires a CSRF token plus optimistic `If-Match` where an existing record is changed. Local developer authentication is deliberately restricted to loopback addresses.
+Google mode stores only an opaque server-side session cookie. Google access and refresh tokens are never persisted. Every mutation derives its actor from that session and requires a CSRF token plus optimistic `If-Match` where an existing record is changed. Local developer authentication is deliberately restricted to loopback addresses and uses an explicit, revocable sign-in session.
 
 Run the collaboration migration as a write-free dry-run first. `--apply` creates a timestamped workspace backup before changing projects or work items, and is safe to run again:
 
@@ -74,6 +74,8 @@ npm run migrate:collaboration -- --workspace=/path/to/workspace --apply
 ```
 
 See [the collaboration architecture](docs/COLLABORATION_ARCHITECTURE.md) for the ownership, team, workflow and audit model.
+
+See [the application identity and session platform blueprint](docs/AUTH_PLATFORM_BLUEPRINT.md) for the reusable Node/Python contracts, adapters, security invariants and portfolio rollout plan.
 
 To migrate a v1 file workspace without inventing unknown historical completion times:
 

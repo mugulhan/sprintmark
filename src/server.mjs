@@ -319,6 +319,8 @@ export function createWorkTrackerServer({
       const path = decodeURIComponent(url.pathname);
       if (path === "/healthz")
         return send(res, 200, { status: "ok", version: VERSION });
+      if (path === "/auth/local/start" && req.method === "GET")
+        return await auth.startLocal(res);
       if (path === "/auth/google/start" && req.method === "GET")
         return await auth.startGoogle(res);
       if (path === "/auth/google/callback" && req.method === "GET")
@@ -332,7 +334,14 @@ export function createWorkTrackerServer({
               auth_mode: session.mode,
               expires_at: session.expires_at,
             })
-          : send(res, 401, { error: "authentication_required" });
+          : send(res, 401, {
+              error: "authentication_required",
+              auth_mode: resolvedAuthConfig.mode,
+              login_url:
+                resolvedAuthConfig.mode === "local"
+                  ? "/auth/local/start"
+                  : "/auth/google/start",
+            });
       if (path === "/api/v1/logout" && req.method === "POST") {
         auth.assertCsrf(req, session);
         return auth.logout(req, res);

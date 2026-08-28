@@ -89,6 +89,17 @@ test("direct work item routes wait for the detail before load completes", async 
   assert.match(app, /if \(route\) await openItem\(route\[1\], false\);/);
 });
 
+test("signed-out local mode renders an explicit local login without stale account controls", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(app, /error\.auth_mode \|\| "google"/);
+  assert.match(app, /"\/auth\/local\/start"/);
+  assert.match(app, /\$\("accountMenu"\)\.hidden = true/);
+  assert.match(styles, /body\.auth-required-view header \.filters/);
+});
+
 test("calendar overflow buttons expand and collapse every item in a day", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /expandedDays: new Set\(\)/);

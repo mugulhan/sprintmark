@@ -7,6 +7,7 @@ const initialView = location.pathname.startsWith("/projects")
     : "calendar";
 const state = {
   session: null,
+  authMode: null,
   users: [],
   teams: [],
   notifications: [],
@@ -58,13 +59,20 @@ async function apiFetch(input, init = {}) {
     renderLogin();
   return response;
 }
-function renderLogin() {
+function renderLogin(authMode = state.authMode || "google") {
+  state.session = null;
+  state.authMode = authMode;
+  document.body.classList.add("auth-required-view");
+  $("accountMenu").hidden = true;
+  $("notificationPanel").hidden = true;
   document.body.classList.remove("app-loading");
+  const local = authMode === "local";
   document.querySelector("main").innerHTML =
-    '<section class="not-found auth-required"><h1>Sprintmark</h1><p>Sign in with an invited Google account to continue.</p><a class="primary button-link" href="/auth/google/start">Continue with Google</a></section>';
+    `<section class="not-found auth-required"><h1>Sprintmark</h1><p>${t(local ? "auth.localDescription" : "auth.googleDescription")}</p><a class="primary button-link" href="${local ? "/auth/local/start" : "/auth/google/start"}">${t(local ? "auth.continueLocal" : "auth.continueGoogle")}</a></section>`;
 }
 function renderAccount() {
   if (!state.session?.user) return;
+  document.body.classList.remove("auth-required-view");
   $("accountMenu").hidden = false;
   $("accountName").textContent = state.session.user.display_name;
   $("notificationCount").textContent = String(
@@ -1325,10 +1333,12 @@ async function openCreateDialog(context = null) {
 async function load() {
   const sessionResponse = await apiFetch("/api/v1/session");
   if (!sessionResponse.ok) {
-    renderLogin();
+    const error = await sessionResponse.json().catch(() => ({}));
+    renderLogin(error.auth_mode || "google");
     return;
   }
   state.session = await sessionResponse.json();
+  state.authMode = state.session.auth_mode;
   const [projects, records, sprints, meta, users, teams, notifications] =
     await Promise.all([
       apiFetch("/api/v1/projects").then((r) => r.json()),
@@ -2104,8 +2114,10 @@ $("notificationPanel").addEventListener("click", async (event) => {
   if (response.ok) state.notificationEtag = response.headers.get("etag");
 });
 $("logoutButton").addEventListener("click", async () => {
-  await apiFetch("/api/v1/logout", { method: "POST" });
+  const response = await apiFetch("/api/v1/logout", { method: "POST" });
+  if (!response.ok) return;
   state.session = null;
+  history.replaceState({}, "", "/projects/");
   renderLogin();
 });
 load().catch((error) => {

@@ -2,6 +2,12 @@ export const messages = {
   tr: {
     "app.versionLabel": "Sprintmark sürüm {version}",
     "app.loadError": "Uygulama yüklenemedi",
+    "auth.googleDescription":
+      "Devam etmek için davet edilmiş Google hesabınızla giriş yapın.",
+    "auth.localDescription":
+      "Bu loopback geliştirme ortamına yerel geliştirici profiliyle giriş yapın.",
+    "auth.continueGoogle": "Google ile devam et",
+    "auth.continueLocal": "Yerel kullanıcıyla devam et",
     "nav.calendar": "Takvim",
     "nav.backlog": "Sorun Backlog'u",
     "nav.newItem": "Yeni iş",
@@ -254,6 +260,12 @@ export const messages = {
   en: {
     "app.versionLabel": "Sprintmark version {version}",
     "app.loadError": "The application could not be loaded",
+    "auth.googleDescription":
+      "Sign in with an invited Google account to continue.",
+    "auth.localDescription":
+      "Sign in to this loopback development environment with the local developer profile.",
+    "auth.continueGoogle": "Continue with Google",
+    "auth.continueLocal": "Continue as local user",
     "nav.calendar": "Calendar",
     "nav.backlog": "Issue backlog",
     "nav.newItem": "New item",

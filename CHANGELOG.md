@@ -4,6 +4,15 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Local developer sign-out now revokes a real server-side session and remains signed out after refresh.
+- Signed-out local mode presents an explicit local login instead of a disabled Google route or stale account controls.
+
+### Documentation
+
+- Added the reusable cross-application identity, session, audit and Node/Python adapter blueprint.
+
 ## [0.10.0] - 2026-08-28
 
 ### Added

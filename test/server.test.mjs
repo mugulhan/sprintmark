@@ -35,6 +35,7 @@ async function fixture() {
       sessionSecret: "test-only",
       localEmail: "test@sprintmark.invalid",
       localName: "Test admin",
+      localAutoLogin: true,
       csrfDisabled: true,
     },
   });
@@ -77,6 +78,64 @@ test("disabled Google routes return an error without terminating local mode", as
   const health = await fetch(`${base}/healthz`);
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: "ok", version: "0.10.0" });
+});
+
+test("local developer sign-out remains signed out until an explicit sign-in", async (context) => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-local-auth-"));
+  const server = createWorkTrackerServer({
+    workspace,
+    authConfig: {
+      mode: "local",
+      sessionSecret: "test-local-session-secret",
+      localEmail: "local@sprintmark.invalid",
+      localName: "Local developer",
+      secureCookies: false,
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const signedOut = await fetch(`${base}/api/v1/session`);
+  assert.equal(signedOut.status, 401);
+  assert.deepEqual(await signedOut.json(), {
+    error: "authentication_required",
+    auth_mode: "local",
+    login_url: "/auth/local/start",
+  });
+
+  const login = await fetch(`${base}/auth/local/start`, {
+    redirect: "manual",
+  });
+  assert.equal(login.status, 302);
+  assert.equal(login.headers.get("location"), "/projects/");
+  const sessionCookie = login.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .find((value) => value.startsWith("sprintmark_session="));
+  assert.ok(sessionCookie);
+
+  const active = await fetch(`${base}/api/v1/session`, {
+    headers: { cookie: sessionCookie },
+  });
+  assert.equal(active.status, 200);
+  const activeSession = await active.json();
+  assert.equal(activeSession.auth_mode, "local");
+  assert.equal(activeSession.user.display_name, "Local developer");
+
+  const logout = await fetch(`${base}/api/v1/logout`, {
+    method: "POST",
+    headers: {
+      cookie: sessionCookie,
+      "x-csrf-token": activeSession.csrf_token,
+    },
+  });
+  assert.equal(logout.status, 204);
+
+  const afterLogout = await fetch(`${base}/api/v1/session`, {
+    headers: { cookie: sessionCookie },
+  });
+  assert.equal(afterLogout.status, 401);
 });
 
 test("API returns ETags and rejects stale updates", async (context) => {
