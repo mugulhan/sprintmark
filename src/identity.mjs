@@ -6,16 +6,45 @@ export const KEY_PATTERN = new RegExp(`^${WORK_ITEM_KEY_SOURCE}$`);
 export const PROJECT_REFERENCE_PATTERN = /^PRJ-\d{3}$/;
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const STATUSES = new Set([
-  "open",
-  "done",
-  "triage",
-  "software",
+export const WORKFLOW_STATUSES = new Set([
+  "backlog",
+  "planned",
+  "in_progress",
+  "review",
   "waiting",
+  "done",
 ]);
-export const TEAMS = new Set(["content-technical", "web-development"]);
+export const LEGACY_STATUSES = new Set(["open", "triage", "software"]);
+export const STATUSES = new Set([...WORKFLOW_STATUSES, ...LEGACY_STATUSES]);
 export const KINDS = new Set(["task", "backlog"]);
 export const PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+export const ACTIVITY_TYPES = new Set([
+  "created",
+  "changed",
+  "comment",
+  "assignment",
+  "handoff",
+  "review",
+  "ownership",
+  "attachment_added",
+  "attachment_removed",
+]);
+export const ACTIVITY_ACTORS = new Set(["system", "user"]);
+export const ACTIVITY_FIELDS = new Set([
+  "title",
+  "status",
+  "team",
+  "team_id",
+  "assignee_id",
+  "reviewer_id",
+  "follower_ids",
+  "scheduled_for",
+  "scheduled_time",
+  "priority",
+  "page_url",
+  "body",
+  "project_key",
+]);
 
 const turkishMap = new Map([
   ["ç", "c"],
@@ -56,7 +85,8 @@ export function contentEtag(raw) {
 
 export function validateRecord(record) {
   const errors = [];
-  if (record.schema_version !== 2) errors.push("schema_version must be 2");
+  if (![2, 3].includes(record.schema_version))
+    errors.push("schema_version must be 2 or 3");
   if (!UUID_PATTERN.test(record.uid || "")) errors.push("uid must be a UUID");
   if (!KEY_PATTERN.test(record.key || "")) errors.push("key is invalid");
   if (!KINDS.has(record.kind)) errors.push("kind is invalid");
@@ -65,7 +95,29 @@ export function validateRecord(record) {
   if (!String(record.title || "").trim()) errors.push("title is required");
   if (slugify(record.slug) !== record.slug) errors.push("slug is invalid");
   if (!STATUSES.has(record.status)) errors.push("status is invalid");
-  if (!TEAMS.has(record.team)) errors.push("team is invalid");
+  if (record.schema_version === 2 && !String(record.team || "").trim())
+    errors.push("team is invalid");
+  if (
+    record.schema_version === 3 &&
+    record.team_id &&
+    !/^team-[0-9a-z-]+$/i.test(record.team_id)
+  )
+    errors.push("team_id is invalid");
+  if (record.schema_version === 3) {
+    if (!/^usr-[0-9a-z-]+$/i.test(record.reporter_id || ""))
+      errors.push("reporter_id is invalid");
+    for (const field of ["assignee_id", "reviewer_id"]) {
+      if (record[field] && !/^usr-[0-9a-z-]+$/i.test(record[field]))
+        errors.push(`${field} is invalid`);
+    }
+    if (!Array.isArray(record.follower_ids))
+      errors.push("follower_ids must be an array");
+    else if (
+      new Set(record.follower_ids).size !== record.follower_ids.length ||
+      !record.follower_ids.every((id) => /^usr-[0-9a-z-]+$/i.test(id))
+    )
+      errors.push("follower_ids is invalid");
+  }
   if (
     record.scheduled_for &&
     !/^\d{4}-\d{2}-\d{2}$/.test(record.scheduled_for)
@@ -96,5 +148,74 @@ export function validateRecord(record) {
     errors.push("legacy_routes must be an array");
   if (!Array.isArray(record.attachments))
     errors.push("attachments must be an array");
+  if (record.activities !== undefined && !Array.isArray(record.activities)) {
+    errors.push("activities must be an array");
+  } else {
+    const activityIds = new Set();
+    for (const activity of record.activities || []) {
+      if (
+        !activity ||
+        typeof activity !== "object" ||
+        !String(activity.id || "").trim()
+      ) {
+        errors.push("activity id is required");
+        continue;
+      }
+      if (activityIds.has(activity.id)) errors.push("activity id is duplicate");
+      activityIds.add(activity.id);
+      if (!ACTIVITY_TYPES.has(activity.type))
+        errors.push("activity type is invalid");
+      if (record.schema_version === 2) {
+        if (!ACTIVITY_ACTORS.has(activity.actor))
+          errors.push("activity actor is invalid");
+      } else if (
+        !activity.actor ||
+        typeof activity.actor !== "object" ||
+        !["user", "system", "legacy"].includes(activity.actor.type) ||
+        !String(activity.actor.id || "").trim() ||
+        !String(activity.actor.display_name || "").trim()
+      ) {
+        errors.push("activity actor is invalid");
+      }
+      if (
+        typeof activity.created_at !== "string" ||
+        Number.isNaN(Date.parse(activity.created_at))
+      ) {
+        errors.push("activity created_at must be an ISO timestamp");
+      }
+      if (
+        activity.type === "comment" &&
+        (!String(activity.body || "").trim() ||
+          String(activity.body).length > 10000)
+      ) {
+        errors.push("comment activity body is invalid");
+      }
+      if (
+        ["changed", "assignment", "handoff", "ownership"].includes(
+          activity.type,
+        ) &&
+        (!Array.isArray(activity.changes) || !activity.changes.length)
+      ) {
+        errors.push(`${activity.type} activity requires changes`);
+      } else if (
+        ["changed", "assignment", "handoff", "ownership"].includes(
+          activity.type,
+        )
+      ) {
+        for (const change of activity.changes) {
+          if (!change || !ACTIVITY_FIELDS.has(change.field))
+            errors.push("activity change field is invalid");
+        }
+      }
+      if (
+        ["attachment_added", "attachment_removed"].includes(activity.type) &&
+        (!activity.details ||
+          !String(activity.details.name || "").trim() ||
+          String(activity.details.name).length > 512)
+      ) {
+        errors.push("attachment activity details are invalid");
+      }
+    }
+  }
   return errors;
 }

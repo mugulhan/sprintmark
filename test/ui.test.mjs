@@ -12,11 +12,10 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
     readFile(resolve(publicRoot, "styles.css"), "utf8"),
     readFile(resolve(publicRoot, "sprintmark-mark.svg"), "utf8"),
   ]);
-  assert.match(html, /data-view="projects"/);
   assert.match(html, /class="brand-lockup"/);
   assert.match(html, /sprintmark-mark\.svg/);
-  assert.match(html, /class="nav projects-home"/);
-  assert.equal((html.match(/data-view="projects"/g) || []).length, 1);
+  assert.match(html, /id="breadcrumb" class="breadcrumb"/);
+  assert.doesNotMatch(html, /class="nav projects-home"/);
   assert.match(html, /id="createEditor"/);
   assert.match(html, /id="editStatus"/);
   assert.match(html, /id="editPriority"/);
@@ -41,11 +40,163 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
   assert.doesNotMatch(app, /Henüz sprint oluşturulmadı/);
 });
 
+test("task viewer links always open in a separate safe tab", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /function openLinksInNewTab\(root\)/);
+  assert.match(app, /link\.target = "_blank"/);
+  assert.match(app, /link\.rel = "noopener noreferrer"/);
+  assert.match(app, /openLinksInNewTab\(\$\("detailBody"\)\)/);
+});
+
+test("work item detail exposes a persistent localized activity timeline", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="activityForm"/);
+  assert.match(html, /id="activityEditor"/);
+  assert.doesNotMatch(html, /id="activityBody"/);
+  assert.match(html, /id="activityList"/);
+  assert.match(app, /function renderActivity\(item\)/);
+  assert.match(app, /\/activities`/);
+  assert.match(app, /"If-Match": state\.selected\._etag/);
+  assert.match(app, /activityEditorToolbar/);
+  assert.match(app, /state\.activityEditor\?\.getMarkdown\(\)/);
+  assert.match(app, /data-activity-comment/);
+  assert.match(app, /initialValue: activity\.body \|\| ""/);
+  assert.doesNotMatch(app, /escapeHtml\(activity\.body\)/);
+  assert.match(styles, /\.activity-list/);
+  assert.match(styles, /\.activity-entry/);
+  assert.match(styles, /\.activity-editor/);
+  assert.match(styles, /\.activity-comment \.toastui-editor-contents/);
+});
+
+test("browser title follows the open work item and returns to the project", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /function updateDocumentTitle\(item = null\)/);
+  assert.match(
+    app,
+    /document\.title = `\$\{item\.title\} · \$\{item\.key\} · Sprintmark`/,
+  );
+  assert.match(app, /updateDocumentTitle\(item\)/);
+  assert.match(
+    app,
+    /updateDocumentTitle\(\$\("detail"\)\.open \? state\.selected : null\)/,
+  );
+  assert.match(
+    app,
+    /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\)/,
+  );
+  assert.match(
+    app,
+    /state\.selected = null;\s+\$\("detailLoading"\)\.hidden = true;\s+\$\("detailGrid"\)\.hidden = false;\s+renderBreadcrumb\(\)/,
+  );
+  assert.match(app, /state\.itemOpenRequest \+= 1;/);
+});
+
+test("direct work item routes wait for the detail before load completes", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /if \(route\) await openItem\(route\[1\], false\);/);
+});
+
+test("signed-out local mode renders an explicit local login without stale account controls", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(app, /error\.auth_mode \|\| "google"/);
+  assert.match(app, /"\/auth\/local\/start"/);
+  assert.match(app, /\$\("accountMenu"\)\.hidden = true/);
+  assert.match(styles, /body\.auth-required-view header \.filters/);
+});
+
+test("calendar overflow buttons expand and collapse every item in a day", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /expandedDays: new Set\(\)/);
+  assert.match(
+    app,
+    /const visibleItems = expanded \? dayItems : dayItems\.slice\(0, 4\)/,
+  );
+  assert.match(app, /aria-expanded="\$\{expanded\}"/);
+  assert.match(app, /e\.target\.closest\("\.more\[data-day\]"\)/);
+  assert.match(app, /state\.expandedDays\.add\(day\)/);
+  assert.match(app, /state\.expandedDays\.delete\(day\)/);
+  assert.match(app, /renderCalendar\(\)/);
+});
+
+test("calendar day surfaces and the adaptive create dialog replace duplicate controls", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.doesNotMatch(html, /id="projectSelect"|class="project-picker"/);
+  assert.doesNotMatch(app, /renderProjectOptions|projectSelect/);
+  assert.match(html, /id="createDialogTitle"/);
+  assert.match(
+    html,
+    /id="createDialog"[\s\S]*aria-labelledby="createDialogTitle"/,
+  );
+  assert.match(html, /id="createDialogContext"/);
+  assert.match(app, /class="day-create-surface"/);
+  assert.match(app, /t\("calendar\.addToDate", \{ date: fullDate \}\)/);
+  assert.match(app, /state\.sprintSelection\.active[\s\S]*selectSprintDay/);
+  assert.match(app, /state\.createOpening/);
+  assert.match(
+    app,
+    /form\.elements\.title\.focus\(\{ preventScroll: true \}\)/,
+  );
+  assert.match(styles, /\.day-create-surface/);
+  assert.doesNotMatch(styles, /\.day-add/);
+  assert.match(styles, /\.motion-dialog/);
+  assert.match(styles, /@starting-style/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /#createDialog \{[\s\S]*max-height: 92dvh/);
+});
+
+test("work-item details paint immediately and defer secondary references", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  const loadingIndex = app.indexOf("renderWorkItemLoading(summary);");
+  const requestIndex = app.indexOf(
+    "apiFetch(`/api/v1/work-items/${key}`)",
+    loadingIndex,
+  );
+  assert.ok(loadingIndex >= 0 && loadingIndex < requestIndex);
+  assert.match(html, /id="detailLoading"[^>]*role="status"/);
+  assert.match(html, /id="detailGrid" class="detail-grid"/);
+  assert.match(app, /let referencesPromise = summary\?\.uid/);
+  assert.match(app, /renderWorkItemChrome\(item, \{ deferActivity: true \}\)/);
+  assert.match(app, /void referencesPromise[\s\S]*\.catch\(\(\) => \{\}\)/);
+  assert.match(styles, /\.detail-loading/);
+});
+
+test("rich editor popups close when editing resumes or Escape is pressed", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /event\.type === "keydown" && event\.key !== "Escape"/);
+  assert.match(
+    app,
+    /event\.target\.closest\("\.toastui-editor-popup, \.toastui-editor-toolbar"\)/,
+  );
+  assert.match(app, /window\.requestAnimationFrame\(hidePopup\)/);
+  assert.match(app, /editor\.eventEmitter\.emit\("closePopup"\)/);
+  assert.match(app, /popup\.style\.display = "none"/);
+  assert.match(app, /editor\.on\("focus", hidePopup\)/);
+  assert.match(app, /autofocus: false/);
+  assert.match(app, /removeEventListener\("pointerdown", closePopup, true\)/);
+  assert.match(app, /removeEventListener\("click", closePopup, true\)/);
+});
+
 test("the rich viewer replaces the legacy Markdown renderer so tables can render", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /renderWorkItemViewer/);
   assert.doesNotMatch(app, /function markdown\(/);
-  assert.match(app, /toolbarItems: editorToolbar/);
+  assert.match(app, /toolbarItems = editorToolbar/);
+  assert.match(app, /toolbarItems,/);
   assert.match(app, /addImageBlobHook/);
   assert.match(app, /data-create-date/);
   assert.match(app, /scheduled_time/);
@@ -53,6 +204,140 @@ test("the rich viewer replaces the legacy Markdown renderer so tables can render
   assert.match(app, /completed_at/);
   assert.match(app, /relativeElapsed/);
   assert.match(app, /patchSelectedWorkItem/);
-  assert.match(app, /`v\$\{meta\.version\}`/);
+  assert.match(app, /`v\$\{state\.meta\.version\}`/);
   assert.doesNotMatch(app, /çalışma ağacı kirli/);
+});
+
+test("task evidence supports files, downloads and legacy workspace references", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /Kanıt dosyaları/);
+  assert.match(html, /id="createAttachment"/);
+  assert.match(html, /accept="[^"]*\.pdf[^"]*\.csv[^"]*\.xlsx[^"]*\.docx/);
+  assert.match(app, /fileReferences: \[\]/);
+  assert.match(app, /\/file-references/);
+  assert.match(app, /function linkWorkspaceReferences\(root\)/);
+  assert.match(app, /className = "workspace-file-link"/);
+  assert.match(app, /function renderFileCard/);
+  assert.match(app, /download=1/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(app, /function enableFileDrop/);
+  assert.doesNotMatch(app, /function enableImageDrop/);
+  assert.match(styles, /\.file-card/);
+  assert.match(styles, /\.missing-file-reference/);
+});
+
+test("project documents render as heading-based documentation pages", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="documentPreviewDialog"/);
+  assert.match(html, /id="documentOutline"/);
+  assert.match(html, /id="documentPreviewBody"/);
+  assert.match(app, /data-project-tab="documents"/);
+  assert.match(app, /function splitMarkdownSections\(markdown\)/);
+  assert.match(app, /const heading = line\.match/);
+  assert.match(app, /headings\.push/);
+  assert.match(app, /data-document-section/);
+  assert.match(app, /function renderDocumentSection\(index\)/);
+  assert.match(app, /\/document-references/);
+  assert.match(app, /projectDocumentUpload/);
+  assert.match(
+    app,
+    /data-project-document-preview="\$\{document\.index\}">\$\{t\("documents\.open"\)\}<\/button>/,
+  );
+  assert.match(
+    app,
+    /href="\$\{escapeHtml\(document\.url\)\}"[^>]*>\$\{t\("documents\.preview"\)\}<\/a>/,
+  );
+  assert.match(html, /id="documentPreviewOpen"/);
+  assert.match(html, />Dosyayı önizle<\/a/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(styles, /\.project-tabs/);
+  assert.match(styles, /\.document-reader/);
+  assert.match(styles, /\.document-outline \.outline-level-3/);
+  assert.match(styles, /\.document-outline \.outline-level-4/);
+  assert.match(styles, /\.document-page/);
+});
+
+test("direct project routes avoid rendering the calendar before project data", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /<body class="app-loading" data-view="calendar">/);
+  assert.match(html, /location\.pathname\.startsWith\("\/projects"\)/);
+  assert.match(html, /location\.pathname\.startsWith\("\/backlog"\)/);
+  assert.match(app, /const initialView = location\.pathname\.startsWith/);
+  assert.match(app, /const viewCanonical/);
+  assert.match(app, /view === "backlog" \? "backlog" : "calendar"/);
+  assert.match(app, /function applyViewShell\(view\)/);
+  assert.match(app, /view: initialView/);
+  assert.match(app, /document\.body\.classList\.remove\("app-loading"\)/);
+  assert.match(styles, /body\.app-loading main > section/);
+  assert.match(styles, /@keyframes loading-sheen/);
+});
+
+test("the projects root is distinct from a selected project detail", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="breadcrumb"/);
+  assert.doesNotMatch(html, /data-project-root/);
+  assert.match(app, /projectIndex:/);
+  assert.match(app, /href: "\/projects\/"/);
+  assert.match(app, /function renderBreadcrumb\(\)/);
+  assert.match(app, /aria-current="page"/);
+  assert.match(app, /\$\("projectDashboard"\)\.hidden = state\.projectIndex/);
+  assert.match(
+    app,
+    /!state\.projectIndex && project\.key === state\.selectedProject/,
+  );
+  assert.match(styles, /\.project-index \.projects-layout/);
+  assert.match(styles, /\.project-index \.project-list/);
+  assert.match(styles, /\.project-dashboard\[hidden\]/);
+});
+
+test("the saved locale is applied before the first visible header paint", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, /localStorage\.getItem\("sprintmark-locale"\)/);
+  assert.match(html, /document\.documentElement\.lang = savedLocale/);
+  assert.match(app, /function renderAccessView\(content, kind\)/);
+  assert.match(
+    app,
+    /document\.documentElement\.classList\.add\("i18n-ready"\)/,
+  );
+  assert.match(styles, /body\.app-loading header nav/);
+  assert.doesNotMatch(styles, /html:not\(\.i18n-ready\) header/);
+});
+
+test("first-run setup is a dedicated localized wizard and never overlays the workspace", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="accessView" class="access-view" hidden/);
+  assert.match(app, /sessionResponse\.status === 428/);
+  assert.match(app, /function renderSetup\(metadata\)/);
+  assert.match(app, /"X-Setup-Token": metadata\.setup_token/);
+  assert.match(app, /autocomplete="new-password"/);
+  assert.doesNotMatch(app, /value="\$\{escapeHtml\(.*client_secret/);
+  assert.match(app, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(styles, /\.setup-wizard/);
+  assert.match(styles, /\.mode-picker/);
+  assert.match(styles, /\.access-panel/);
 });

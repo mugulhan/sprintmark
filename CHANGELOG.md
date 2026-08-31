@@ -4,6 +4,50 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Added
+
+- Added full-day, keyboard-accessible calendar creation surfaces with localized date and time context.
+- Added an adaptive new-item dialog that is centered on desktop and presented as a bottom sheet on mobile, with reduced-motion support.
+- Added a localized browser-based first-run wizard for local and Google authentication, including the exact Google callback URI and secure `.env.local` persistence.
+- Added an interactive and automation-friendly `setup:auth` wizard that validates Google/local configuration, generates a session secret and writes an ignored environment file.
+- Added a complete Google Cloud OAuth setup and troubleshooting guide for local, Docker and production deployments.
+
+### Changed
+
+- Removed the duplicate project selector from the calendar toolbar in favor of canonical project breadcrumbs.
+- Work-item dialogs now paint an immediate loading state while file references and rich activity views finish progressively.
+- `npm start` automatically loads `.env` and `.env.local` when present.
+- Google authentication permits HTTP only for Google-supported loopback callback URLs; non-loopback deployments still require HTTPS.
+
+### Fixed
+
+- Rich editor heading menus now dismiss when editing resumes or Escape is pressed, preventing popups from blocking text input.
+- The protected calendar/project shell now stays hidden until session or setup state is resolved, eliminating the signed-out refresh flash and overlay effect.
+- Local developer sign-out now revokes a real server-side session and remains signed out after refresh.
+- Signed-out local mode presents an explicit local login instead of a disabled Google route or stale account controls.
+
+### Documentation
+
+- Added the reusable cross-application identity, session, audit and Node/Python adapter blueprint.
+
+## [0.10.0] - 2026-08-28
+
+### Added
+
+- Invited Google OIDC identities, secure server-side sessions, CSRF protection and a loopback-only local developer profile.
+- Single-owner projects, global teams, project roles, reporters, assignees, reviewers and followers.
+- A guarded backlog-to-done workflow with conditional review, explanatory handoffs and identity-aware audit events.
+- Deduplicated in-app notifications and ownership/team controls in project and work-item views.
+- A dry-run-first, backed-up and idempotent collaboration migration.
+
+## [0.9.0] - 2026-08-28
+
+### Added
+
+- İş kayıtlarına kalıcı kullanıcı notları ve otomatik değişiklik geçmişi içeren Jira benzeri aktivite akışı eklendi.
+- Durum, ekip, öncelik, planlama, açıklama ve dosya işlemleri append-only olaylar olarak kaydediliyor.
+- Aktivite yazımları ETag/`If-Match` eşzamanlılık korumasına alındı ve Türkçe/İngilizce arayüz desteği eklendi.
+
 ## [0.6.2] - 2026-08-26
 
 ### Changed
@@ -43,7 +87,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Priority levels, filters, scheduled times, Turkish and English UI modes.
 - Docker and GitHub Container Registry distribution.
 
-[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/mugulhan/sprintmark/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/mugulhan/sprintmark/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/mugulhan/sprintmark/compare/v0.6.2...v0.9.0
 [0.6.2]: https://github.com/mugulhan/sprintmark/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/mugulhan/sprintmark/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mugulhan/sprintmark/compare/v0.5.0...v0.6.0

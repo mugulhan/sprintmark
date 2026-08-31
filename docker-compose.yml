@@ -8,6 +8,12 @@ services:
       SPRINTMARK_DATA_DIR: /data
       SPRINTMARK_TIMEZONE: ${SPRINTMARK_TIMEZONE:-Europe/Istanbul}
       SPRINTMARK_DEFAULT_LOCALE: ${SPRINTMARK_DEFAULT_LOCALE:-en}
+      SPRINTMARK_AUTH_MODE: ${SPRINTMARK_AUTH_MODE:-google}
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      BASE_URL: ${BASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      BOOTSTRAP_ADMIN_EMAILS: ${BOOTSTRAP_ADMIN_EMAILS}
     volumes:
       - sprintmark-data:/data
     restart: unless-stopped
