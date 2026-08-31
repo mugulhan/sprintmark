@@ -88,7 +88,11 @@ test("browser title follows the open work item and returns to the project", asyn
     app,
     /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\)/,
   );
-  assert.match(app, /state\.selected = null;\s+renderBreadcrumb\(\)/);
+  assert.match(
+    app,
+    /state\.selected = null;\s+\$\("detailLoading"\)\.hidden = true;\s+\$\("detailGrid"\)\.hidden = false;\s+renderBreadcrumb\(\)/,
+  );
+  assert.match(app, /state\.itemOpenRequest \+= 1;/);
 });
 
 test("direct work item routes wait for the detail before load completes", async () => {
@@ -119,6 +123,72 @@ test("calendar overflow buttons expand and collapse every item in a day", async 
   assert.match(app, /state\.expandedDays\.add\(day\)/);
   assert.match(app, /state\.expandedDays\.delete\(day\)/);
   assert.match(app, /renderCalendar\(\)/);
+});
+
+test("calendar day surfaces and the adaptive create dialog replace duplicate controls", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.doesNotMatch(html, /id="projectSelect"|class="project-picker"/);
+  assert.doesNotMatch(app, /renderProjectOptions|projectSelect/);
+  assert.match(html, /id="createDialogTitle"/);
+  assert.match(
+    html,
+    /id="createDialog"[\s\S]*aria-labelledby="createDialogTitle"/,
+  );
+  assert.match(html, /id="createDialogContext"/);
+  assert.match(app, /class="day-create-surface"/);
+  assert.match(app, /t\("calendar\.addToDate", \{ date: fullDate \}\)/);
+  assert.match(app, /state\.sprintSelection\.active[\s\S]*selectSprintDay/);
+  assert.match(app, /state\.createOpening/);
+  assert.match(
+    app,
+    /form\.elements\.title\.focus\(\{ preventScroll: true \}\)/,
+  );
+  assert.match(styles, /\.day-create-surface/);
+  assert.doesNotMatch(styles, /\.day-add/);
+  assert.match(styles, /\.motion-dialog/);
+  assert.match(styles, /@starting-style/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /#createDialog \{[\s\S]*max-height: 92dvh/);
+});
+
+test("work-item details paint immediately and defer secondary references", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  const loadingIndex = app.indexOf("renderWorkItemLoading(summary);");
+  const requestIndex = app.indexOf(
+    "apiFetch(`/api/v1/work-items/${key}`)",
+    loadingIndex,
+  );
+  assert.ok(loadingIndex >= 0 && loadingIndex < requestIndex);
+  assert.match(html, /id="detailLoading"[^>]*role="status"/);
+  assert.match(html, /id="detailGrid" class="detail-grid"/);
+  assert.match(app, /let referencesPromise = summary\?\.uid/);
+  assert.match(app, /renderWorkItemChrome\(item, \{ deferActivity: true \}\)/);
+  assert.match(app, /void referencesPromise[\s\S]*\.catch\(\(\) => \{\}\)/);
+  assert.match(styles, /\.detail-loading/);
+});
+
+test("rich editor popups close when editing resumes or Escape is pressed", async () => {
+  const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
+  assert.match(app, /event\.type === "keydown" && event\.key !== "Escape"/);
+  assert.match(
+    app,
+    /event\.target\.closest\("\.toastui-editor-popup, \.toastui-editor-toolbar"\)/,
+  );
+  assert.match(app, /window\.requestAnimationFrame\(hidePopup\)/);
+  assert.match(app, /editor\.eventEmitter\.emit\("closePopup"\)/);
+  assert.match(app, /popup\.style\.display = "none"/);
+  assert.match(app, /editor\.on\("focus", hidePopup\)/);
+  assert.match(app, /autofocus: false/);
+  assert.match(app, /removeEventListener\("pointerdown", closePopup, true\)/);
+  assert.match(app, /removeEventListener\("click", closePopup, true\)/);
 });
 
 test("the rich viewer replaces the legacy Markdown renderer so tables can render", async () => {

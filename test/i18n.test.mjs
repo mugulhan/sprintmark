@@ -18,6 +18,11 @@ test("message interpolation and English plural forms are locale aware", () => {
   globalThis.document = { documentElement: { lang: "en" } };
   try {
     assert.equal(t("project.goCalendar"), "Go to calendar");
+    assert.equal(
+      t("calendar.addToDate", { date: "September 3, 2026" }),
+      "Add a work item on September 3, 2026",
+    );
+    assert.equal(t("work.loading"), "Loading work item details…");
     assert.equal(tp("count.project", 1), "1 project");
     assert.equal(tp("count.project", 2), "2 projects");
     assert.equal(tp("summary.calendarItems", 1), "1 calendar item");

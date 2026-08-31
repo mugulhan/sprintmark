@@ -6,17 +6,22 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- Added full-day, keyboard-accessible calendar creation surfaces with localized date and time context.
+- Added an adaptive new-item dialog that is centered on desktop and presented as a bottom sheet on mobile, with reduced-motion support.
 - Added a localized browser-based first-run wizard for local and Google authentication, including the exact Google callback URI and secure `.env.local` persistence.
 - Added an interactive and automation-friendly `setup:auth` wizard that validates Google/local configuration, generates a session secret and writes an ignored environment file.
 - Added a complete Google Cloud OAuth setup and troubleshooting guide for local, Docker and production deployments.
 
 ### Changed
 
+- Removed the duplicate project selector from the calendar toolbar in favor of canonical project breadcrumbs.
+- Work-item dialogs now paint an immediate loading state while file references and rich activity views finish progressively.
 - `npm start` automatically loads `.env` and `.env.local` when present.
 - Google authentication permits HTTP only for Google-supported loopback callback URLs; non-loopback deployments still require HTTPS.
 
 ### Fixed
 
+- Rich editor heading menus now dismiss when editing resumes or Escape is pressed, preventing popups from blocking text input.
 - The protected calendar/project shell now stays hidden until session or setup state is resolved, eliminating the signed-out refresh flash and overlay effect.
 - Local developer sign-out now revokes a real server-side session and remains signed out after refresh.
 - Signed-out local mode presents an explicit local login instead of a disabled Google route or stale account controls.

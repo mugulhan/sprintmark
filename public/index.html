@@ -66,10 +66,6 @@
       </div>
       <div class="filters">
         <nav id="breadcrumb" class="breadcrumb" aria-label="Sayfa yolu"></nav>
-        <label class="project-picker"
-          ><span data-i18n="project.picker">Proje</span
-          ><select id="projectSelect"></select
-        ></label>
         <button id="newProject" data-i18n="project.new">Yeni proje</button>
         <button
           id="previousMonth"
@@ -197,7 +193,7 @@
       </section>
     </main>
 
-    <dialog id="detail">
+    <dialog id="detail" aria-labelledby="detailTitle">
       <div class="dialog-head">
         <div>
           <h2 id="detailTitle"></h2>
@@ -215,7 +211,11 @@
           ×
         </button>
       </div>
-      <div class="detail-grid">
+      <div id="detailLoading" class="detail-loading" role="status" hidden>
+        <span class="detail-loading-spinner" aria-hidden="true"></span>
+        <span data-i18n="work.loading">İş ayrıntıları yükleniyor…</span>
+      </div>
+      <div id="detailGrid" class="detail-grid">
         <aside class="actions">
           <button id="copyLink" data-i18n="work.copyLink">
             Kalıcı bağlantıyı kopyala
@@ -570,74 +570,97 @@
       </form>
     </dialog>
 
-    <dialog id="createDialog" class="create-dialog">
+    <dialog
+      id="createDialog"
+      class="create-dialog motion-dialog"
+      aria-labelledby="createDialogTitle"
+    >
       <form id="createForm">
         <div class="dialog-head">
-          <h2 data-i18n="work.newTitle">Yeni iş kaydı</h2>
-          <button type="button" class="close">×</button>
+          <div>
+            <h2 id="createDialogTitle" data-i18n="work.newTitle">
+              Yeni iş kaydı
+            </h2>
+            <p id="createDialogContext" class="dialog-context" hidden></p>
+          </div>
+          <button
+            type="button"
+            class="close"
+            aria-label="Kapat"
+            data-i18n-aria-label="work.close"
+          >
+            ×
+          </button>
         </div>
-        <label
-          ><span data-i18n="work.type">Tür</span
-          ><select name="kind">
-            <option value="task" data-i18n="work.task">Görev</option>
-            <option value="backlog" data-i18n="work.backlog">Backlog</option>
-          </select></label
-        ><label
-          ><span data-i18n="work.title">Başlık</span
-          ><input name="title" required maxlength="240" /></label
-        ><label
-          ><span data-i18n="work.team">Ekip</span
-          ><select name="team_id" id="createTeam"></select></label
-        ><label
-          ><span data-i18n="work.priority">Öncelik</span
-          ><select name="priority">
-            <option value="" data-i18n="priority.unspecified">
-              Belirlenmedi
-            </option>
-            <option value="critical" data-i18n="priority.critical">
-              Kritik
-            </option>
-            <option value="high" data-i18n="priority.high">Yüksek</option>
-            <option value="medium" data-i18n="priority.medium">Orta</option>
-            <option value="low" data-i18n="priority.low">Düşük</option>
-          </select></label
-        >
-        <label class="planned-at"
-          ><span data-i18n="work.scheduledAt">Planlanan zaman</span>
-          <span class="schedule-control">
-            <input
-              name="scheduled_for"
-              type="date"
-              aria-label="Planlanan tarih"
-              data-i18n-aria-label="work.scheduledDate"
-            />
-            <input
-              name="scheduled_time"
-              type="time"
-              aria-label="Planlanan saat"
-              data-i18n-aria-label="work.scheduledTime"
-            />
-          </span>
-        </label>
-        <label
-          ><span data-i18n="work.details">Detay</span>
-          <div id="createEditor" class="rich-editor"></div
-        ></label>
-        <input
-          id="createAttachment"
-          class="visually-hidden"
-          type="file"
-          accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx"
-          multiple
-        />
-        <div
-          class="paste-zone"
-          id="createEvidencePasteZone"
-          role="button"
-          tabindex="0"
-          data-i18n="work.newEvidenceHelp"
-        >
-          Kanıt dosyalarını seçin, buraya bırakın veya görsel yapıştırın.
+        <div class="create-dialog-body">
+          <label class="create-field create-title-field"
+            ><span data-i18n="work.title">Başlık</span
+            ><input name="title" required maxlength="240"
+          /></label>
+          <div class="create-meta-grid">
+            <label class="create-field"
+              ><span data-i18n="work.type">Tür</span
+              ><select name="kind">
+                <option value="task" data-i18n="work.task">Görev</option>
+                <option value="backlog" data-i18n="work.backlog">
+                  Backlog
+                </option>
+              </select></label
+            ><label class="create-field"
+              ><span data-i18n="work.team">Ekip</span
+              ><select name="team_id" id="createTeam"></select></label
+            ><label class="create-field"
+              ><span data-i18n="work.priority">Öncelik</span
+              ><select name="priority">
+                <option value="" data-i18n="priority.unspecified">
+                  Belirlenmedi
+                </option>
+                <option value="critical" data-i18n="priority.critical">
+                  Kritik
+                </option>
+                <option value="high" data-i18n="priority.high">Yüksek</option>
+                <option value="medium" data-i18n="priority.medium">Orta</option>
+                <option value="low" data-i18n="priority.low">Düşük</option>
+              </select></label
+            >
+          </div>
+          <label class="create-field planned-at"
+            ><span data-i18n="work.scheduledAt">Planlanan zaman</span>
+            <span class="schedule-control">
+              <input
+                name="scheduled_for"
+                type="date"
+                aria-label="Planlanan tarih"
+                data-i18n-aria-label="work.scheduledDate"
+              />
+              <input
+                name="scheduled_time"
+                type="time"
+                aria-label="Planlanan saat"
+                data-i18n-aria-label="work.scheduledTime"
+              />
+            </span>
+          </label>
+          <label class="create-field"
+            ><span data-i18n="work.details">Detay</span>
+            <div id="createEditor" class="rich-editor"></div
+          ></label>
+          <input
+            id="createAttachment"
+            class="visually-hidden"
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.json,.txt,.md,.xlsx,.docx"
+            multiple
+          />
+          <div
+            class="paste-zone"
+            id="createEvidencePasteZone"
+            role="button"
+            tabindex="0"
+            data-i18n="work.newEvidenceHelp"
+          >
+            Kanıt dosyalarını seçin, buraya bırakın veya görsel yapıştırın.
+          </div>
         </div>
         <div class="form-actions">
           <button type="button" class="close" data-i18n="work.cancel">

@@ -30,6 +30,8 @@ const state = {
   fileReferences: [],
   draggingUid: null,
   suppressCardClick: false,
+  createOpening: false,
+  itemOpenRequest: 0,
   expandedDays: new Set(),
   sprintSelection: { active: false, start: null },
   detailEditor: null,
@@ -440,19 +442,6 @@ function updateDocumentTitle(item = null) {
   }
   document.title = `${currentProject()?.name || t("breadcrumb.projects")} · Sprintmark`;
 }
-function renderProjectOptions() {
-  $("projectSelect").innerHTML = state.projects
-    .filter(
-      (project) =>
-        project.status === "active" || project.key === state.selectedProject,
-    )
-    .map(
-      (project) =>
-        `<option value="${project.key}">${escapeHtml(project.name)} (${project.code})${project.status === "archived" ? ` · ${t("project.status.archived")}` : ""}</option>`,
-    )
-    .join("");
-  $("projectSelect").value = state.selectedProject;
-}
 function renderStatusOptions() {
   const selected = $("statusFilter").value;
   const statuses = [...new Set(state.items.map((item) => item.status))];
@@ -518,6 +507,7 @@ function makeEditor(
     previewStyle: "vertical",
     hideModeSwitch: true,
     usageStatistics: false,
+    autofocus: false,
     initialValue,
     placeholder,
     toolbarItems,
@@ -538,6 +528,33 @@ function makeEditor(
         }
       : undefined,
   });
+  const hidePopup = () => {
+    editor.eventEmitter.emit("closePopup");
+    element
+      .querySelectorAll(".toastui-editor-popup")
+      .forEach((popup) => (popup.style.display = "none"));
+  };
+  const closePopup = (event) => {
+    if (event.type === "keydown" && event.key !== "Escape") return;
+    if (
+      event.type !== "keydown" &&
+      event.target.closest(".toastui-editor-popup, .toastui-editor-toolbar")
+    )
+      return;
+    if (event.type !== "keydown") window.requestAnimationFrame(hidePopup);
+    else hidePopup();
+  };
+  element.addEventListener("pointerdown", closePopup, true);
+  element.addEventListener("click", closePopup, true);
+  element.addEventListener("keydown", closePopup, true);
+  const destroy = editor.destroy.bind(editor);
+  editor.destroy = () => {
+    element.removeEventListener("pointerdown", closePopup, true);
+    element.removeEventListener("click", closePopup, true);
+    element.removeEventListener("keydown", closePopup, true);
+    destroy();
+  };
+  editor.on("focus", hidePopup);
   if (onChange) editor.on("change", onChange);
   return editor;
 }
@@ -686,7 +703,11 @@ function renderCalendar() {
       dayItems.length > 4
         ? `<button class="more" data-day="${iso}" aria-expanded="${expanded}">${expanded ? t("calendar.showLess") : t("calendar.showMore", { count: dayItems.length - 4 })}</button>`
         : "";
-    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><div class="date"><span>${date.getDate()}</span><span><button class="day-add" data-create-date="${iso}" title="${t("calendar.addToDay")}">+</button><span class="count">${dayItems.length ? tp("calendar.itemCount", dayItems.length) : ""}</span></span></div><div class="sprint-markers">${markers}</div>${visibleItems.map(card).join("")}${moreButton}</div>`;
+    const fullDate = new Intl.DateTimeFormat(locale(), {
+      dateStyle: "long",
+    }).format(date);
+    const createLabel = t("calendar.addToDate", { date: fullDate });
+    html += `<div class="day${outside}${today}${sprintClass}${pickClass}" data-drop-date="${iso}"><button type="button" class="day-create-surface" data-create-date="${iso}" aria-label="${escapeHtml(createLabel)}" title="${escapeHtml(createLabel)}"><span>${t("calendar.quickAdd")}</span></button><div class="date"><span>${date.getDate()}</span><span class="count">${dayItems.length ? tp("calendar.itemCount", dayItems.length) : ""}</span></div><div class="sprint-markers">${markers}</div>${visibleItems.map(card).join("")}${moreButton}</div>`;
   }
   $("calendar").innerHTML = html;
   const undated = items.filter((i) => !i.scheduled_for);
@@ -755,7 +776,6 @@ function updateProjectInState(project) {
   state.projects = state.projects.map((candidate) =>
     candidate.uid === project.uid ? project : candidate,
   );
-  renderProjectOptions();
 }
 
 async function loadProjectDocuments() {
@@ -1194,7 +1214,7 @@ function resetActivityEditor() {
     t("activity.placeholder"),
   );
 }
-function renderWorkItemChrome(item) {
+function renderWorkItemChrome(item, { deferActivity = false } = {}) {
   $("detailTitle").textContent = item.title;
   $("detailKey").textContent = item.key;
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
@@ -1262,22 +1282,52 @@ function renderWorkItemChrome(item) {
     `<dt>${t("work.reporter")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reporter_id)?.display_name || item.reporter_id || "—")}</dd><dt>${t("work.assignee")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.assignee_id)?.display_name || "—")}</dd><dt>${t("work.reviewer")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reviewer_id)?.display_name || "—")}</dd>`,
   );
   renderEvidence(item);
-  renderActivity(item);
+  if (!deferActivity) renderActivity(item);
   translateDocument();
 }
+function renderWorkItemLoading(item) {
+  $("detailTitle").textContent = item?.title || t("work.loading");
+  $("detailKey").textContent = item?.key || "";
+  $("detailUid").textContent = item?.uid ? `UUID ${item.uid.slice(0, 8)}` : "";
+  $("detailStatus").textContent = item ? statusName(item.status) : "";
+  $("detailPriority").textContent = item ? priorityName(item.priority) : "";
+  $("detailTeam").textContent = item ? teamName(item.team_id || item.team) : "";
+  $("detailGrid").hidden = true;
+  $("detailLoading").hidden = false;
+  if (!$("detail").open) $("detail").showModal();
+}
 async function openItem(key, push = true) {
-  const response = await apiFetch(`/api/v1/work-items/${key}`);
+  const requestId = ++state.itemOpenRequest;
+  const summary = state.items.find((item) => item.key === key) || null;
+  state.selected = summary;
+  renderWorkItemLoading(summary);
+  if (push && summary) {
+    state.returnPath = `${location.pathname}${location.search}`;
+    history.pushState({ key: summary.key }, "", canonical(summary));
+    renderBreadcrumb();
+    updateDocumentTitle(summary);
+  }
+  let referencesPromise = summary?.uid
+    ? apiFetch(`/api/v1/work-items/${summary.uid}/file-references`)
+    : null;
+  let response;
+  try {
+    response = await apiFetch(`/api/v1/work-items/${key}`);
+  } catch {
+    if (requestId === state.itemOpenRequest && $("detail").open)
+      $("detailLoading").lastElementChild.textContent = t("error.itemLoad");
+    return;
+  }
+  if (requestId !== state.itemOpenRequest || !$("detail").open) return;
   if (!response.ok) {
     location.href = `/work-items/${key}/bulunamadi`;
     return;
   }
   const item = await response.json();
-  const referencesResponse = await apiFetch(
+  referencesPromise ||= apiFetch(
     `/api/v1/work-items/${item.uid}/file-references`,
   );
-  state.fileReferences = referencesResponse.ok
-    ? (await referencesResponse.json()).items
-    : [];
+  state.fileReferences = [];
   state.detailEditor?.destroy();
   state.detailEditor = null;
   state.editingWorkItem = false;
@@ -1286,26 +1336,43 @@ async function openItem(key, push = true) {
   if (state.selectedProject !== item.project_key) {
     state.selectedProject = item.project_key;
     window.localStorage.setItem("work-tracker-project", item.project_key);
-    renderProjectOptions();
     render();
   }
-  renderWorkItemChrome(item);
+  renderWorkItemChrome(item, { deferActivity: true });
+  $("detailLoading").hidden = true;
+  $("detailGrid").hidden = false;
   $("detailBody").hidden = false;
   $("detailEditor").hidden = true;
   $("editorActions").hidden = true;
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
-  if (push) {
+  if (push && !summary) {
     state.returnPath = `${location.pathname}${location.search}`;
     history.pushState({ key: item.key }, "", canonical(item));
   }
-  if (!$("detail").open) $("detail").showModal();
   renderBreadcrumb();
   updateDocumentTitle(item);
   window.requestAnimationFrame(() => {
+    if (requestId !== state.itemOpenRequest || !$("detail").open) return;
     renderWorkItemViewer(item.body);
+    renderActivity(item);
     resetActivityEditor();
   });
+  void referencesPromise
+    .then(async (referencesResponse) => {
+      if (
+        requestId !== state.itemOpenRequest ||
+        state.selected?.uid !== item.uid ||
+        !$("detail").open
+      )
+        return;
+      state.fileReferences = referencesResponse.ok
+        ? (await referencesResponse.json()).items
+        : [];
+      renderEvidence(item);
+      linkWorkspaceReferences($("detailBody"));
+    })
+    .catch(() => {});
 }
 async function createDraft() {
   const response = await apiFetch("/api/v1/drafts", { method: "POST" });
@@ -1517,34 +1584,63 @@ async function patchSelectedWorkItem(patch) {
   return updated;
 }
 async function openCreateDialog(context = null) {
-  if (currentProject()?.status !== "active") return;
-  state.createContext = context;
-  const draft = await createDraft();
-  state.createDraftId = draft.id;
-  const form = $("createForm");
-  $("createTeam").innerHTML = state.teams
-    .map(
-      (team) =>
-        `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`,
-    )
-    .join("");
-  if (context?.scheduledFor) {
-    const now = new Date();
-    form.elements.scheduled_for.value = context.scheduledFor;
-    form.elements.scheduled_time.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  }
-  $("createDialog").showModal();
-  window.requestAnimationFrame(() => {
-    if (!state.createEditor)
-      state.createEditor = makeEditor(
-        $("createEditor"),
-        "",
-        "330px",
-        null,
-        (file, placement) =>
-          uploadDraftFile(state.createDraftId, file, placement),
+  if (
+    currentProject()?.status !== "active" ||
+    state.createOpening ||
+    $("createDialog").open
+  )
+    return;
+  state.createOpening = true;
+  const invoker = context?.invoker;
+  invoker?.setAttribute("aria-busy", "true");
+  try {
+    state.createContext = context;
+    const draft = await createDraft();
+    state.createDraftId = draft.id;
+    const form = $("createForm");
+    form.reset();
+    $("createTeam").innerHTML = state.teams
+      .map(
+        (team) =>
+          `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`,
+      )
+      .join("");
+    if (context?.scheduledFor) {
+      const now = new Date();
+      form.elements.scheduled_for.value = context.scheduledFor;
+      form.elements.scheduled_time.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const [year, month, day] = context.scheduledFor.split("-").map(Number);
+      const formattedDate = new Intl.DateTimeFormat(locale(), {
+        dateStyle: "full",
+      }).format(new Date(year, month - 1, day));
+      $("createDialogContext").textContent =
+        `${formattedDate} · ${form.elements.scheduled_time.value}`;
+      $("createDialogContext").hidden = false;
+    } else {
+      $("createDialogContext").textContent = "";
+      $("createDialogContext").hidden = true;
+    }
+    $("createDialog").showModal();
+    window.requestAnimationFrame(() => {
+      if (!state.createEditor)
+        state.createEditor = makeEditor(
+          $("createEditor"),
+          "",
+          "330px",
+          null,
+          (file, placement) =>
+            uploadDraftFile(state.createDraftId, file, placement),
+        );
+      window.requestAnimationFrame(() =>
+        form.elements.title.focus({ preventScroll: true }),
       );
-  });
+    });
+  } catch (error) {
+    alert(error.message || t("error.draftCreate"));
+  } finally {
+    invoker?.removeAttribute("aria-busy");
+    state.createOpening = false;
+  }
 }
 async function load() {
   const sessionResponse = await apiFetch("/api/v1/session");
@@ -1613,7 +1709,6 @@ async function load() {
     const detail = await apiFetch(`/api/v1/projects/${project.key}`);
     if (detail.ok) updateProjectInState(await detail.json());
   }
-  renderProjectOptions();
   renderBuildMeta();
   renderStatusOptions();
   const dates = filtered()
@@ -1688,11 +1783,22 @@ document.addEventListener("click", async (e) => {
   const createForDate = e.target.closest("[data-create-date]");
   if (createForDate) {
     e.stopPropagation();
-    openCreateDialog({ scheduledFor: createForDate.dataset.createDate });
+    if (state.suppressCardClick) return;
+    if (state.sprintSelection.active) {
+      selectSprintDay(createForDate.dataset.createDate);
+      return;
+    }
+    openCreateDialog({
+      scheduledFor: createForDate.dataset.createDate,
+      invoker: createForDate,
+    });
     return;
   }
   const cardButton = e.target.closest("[data-key]");
-  if (cardButton && !state.suppressCardClick) openItem(cardButton.dataset.key);
+  if (cardButton && !state.suppressCardClick) {
+    openItem(cardButton.dataset.key);
+    return;
+  }
   const day = e.target.closest(".day[data-drop-date]");
   if (
     day &&
@@ -1863,7 +1969,6 @@ function selectProject(key, updateAddress = true) {
   state.projectSection = "overview";
   state.projectDocuments = [];
   window.localStorage.setItem("work-tracker-project", key);
-  renderProjectOptions();
   const dates = filtered()
     .map((item) => item.scheduled_for)
     .filter(Boolean)
@@ -1897,7 +2002,6 @@ function handleProjectAction(action) {
     return $("sprintDialog").showModal();
   if (action === "edit") openProjectEdit();
 }
-$("projectSelect").onchange = (event) => selectProject(event.target.value);
 $("newProject").onclick = () => $("projectDialog").showModal();
 $("newProjectFromList").onclick = () => $("projectDialog").showModal();
 $("projectForm").onsubmit = async (event) => {
@@ -1938,7 +2042,6 @@ $("projectEditForm").onsubmit = async (event) => {
     candidate.uid === updated.uid ? updated : candidate,
   );
   $("projectEditDialog").close();
-  renderProjectOptions();
   history.replaceState({}, "", projectCanonical(updated));
   render();
 };
@@ -2107,6 +2210,7 @@ $("detail").addEventListener("cancel", (event) => {
   if (state.editingWorkItem && !cancelWorkItemEdit()) event.preventDefault();
 });
 $("detail").addEventListener("close", () => {
+  state.itemOpenRequest += 1;
   state.detailViewer?.destroy();
   state.detailViewer = null;
   state.detailEditor?.destroy();
@@ -2121,6 +2225,8 @@ $("detail").addEventListener("close", () => {
   if (location.pathname.startsWith("/work-items/"))
     history.pushState({}, "", state.returnPath || "/");
   state.selected = null;
+  $("detailLoading").hidden = true;
+  $("detailGrid").hidden = false;
   renderBreadcrumb();
   updateDocumentTitle();
 });
@@ -2140,11 +2246,10 @@ window.addEventListener("beforeunload", (event) => {
   event.preventDefault();
   event.returnValue = "";
 });
-$("newItem").onclick = openCreateDialog;
+$("newItem").onclick = () => openCreateDialog();
 $("localeSelect").onchange = (event) => {
   window.localStorage.setItem("sprintmark-locale", event.target.value);
   document.documentElement.lang = event.target.value;
-  renderProjectOptions();
   renderStatusOptions();
   renderBuildMeta();
   render();
