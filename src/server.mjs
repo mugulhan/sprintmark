@@ -488,7 +488,7 @@ export function createWorkTrackerServer({
         return await auth.startGoogle(res);
       if (path === "/auth/google/callback" && req.method === "GET")
         return await auth.finishGoogle(req, res, url);
-      const session = await auth.session(req);
+      const session = auth ? await auth.session(req) : null;
       if (path === "/api/v1/session" && req.method === "GET")
         return session
           ? send(res, 200, {

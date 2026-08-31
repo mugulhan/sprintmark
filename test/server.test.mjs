@@ -163,6 +163,10 @@ test("first-run setup is loopback-only, CSRF-bound and activates local auth", as
     setup_url: "/api/v1/setup",
   });
 
+  const shell = await fetch(base);
+  assert.equal(shell.status, 200);
+  assert.match(await shell.text(), /Sprintmark/);
+
   const challengeResponse = await fetch(`${base}/api/v1/setup`);
   assert.equal(challengeResponse.status, 200);
   const challenge = await challengeResponse.json();
