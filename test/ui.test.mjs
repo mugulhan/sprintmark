@@ -55,14 +55,21 @@ test("work item detail exposes a persistent localized activity timeline", async 
     readFile(resolve(publicRoot, "styles.css"), "utf8"),
   ]);
   assert.match(html, /id="activityForm"/);
-  assert.match(html, /id="activityBody"/);
+  assert.match(html, /id="activityEditor"/);
+  assert.doesNotMatch(html, /id="activityBody"/);
   assert.match(html, /id="activityList"/);
   assert.match(app, /function renderActivity\(item\)/);
   assert.match(app, /\/activities`/);
   assert.match(app, /"If-Match": state\.selected\._etag/);
-  assert.match(app, /escapeHtml\(activity\.body\)/);
+  assert.match(app, /activityEditorToolbar/);
+  assert.match(app, /state\.activityEditor\?\.getMarkdown\(\)/);
+  assert.match(app, /data-activity-comment/);
+  assert.match(app, /initialValue: activity\.body \|\| ""/);
+  assert.doesNotMatch(app, /escapeHtml\(activity\.body\)/);
   assert.match(styles, /\.activity-list/);
   assert.match(styles, /\.activity-entry/);
+  assert.match(styles, /\.activity-editor/);
+  assert.match(styles, /\.activity-comment \.toastui-editor-contents/);
 });
 
 test("browser title follows the open work item and returns to the project", async () => {
@@ -118,7 +125,8 @@ test("the rich viewer replaces the legacy Markdown renderer so tables can render
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /renderWorkItemViewer/);
   assert.doesNotMatch(app, /function markdown\(/);
-  assert.match(app, /toolbarItems: editorToolbar/);
+  assert.match(app, /toolbarItems = editorToolbar/);
+  assert.match(app, /toolbarItems,/);
   assert.match(app, /addImageBlobHook/);
   assert.match(app, /data-create-date/);
   assert.match(app, /scheduled_time/);

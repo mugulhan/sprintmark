@@ -243,7 +243,8 @@ export const messages = {
       "Notları ve görevde yapılan değişiklikleri kronolojik olarak izleyin.",
     "activity.addNote": "Not ekle",
     "activity.placeholder": "Bu görevle ilgili bir güncelleme yazın…",
-    "activity.noteHelp": "Notlar görev geçmişinde kalıcı olarak saklanır.",
+    "activity.noteHelp":
+      "Biçimlendirilmiş notlar görev geçmişinde Markdown olarak kalıcı biçimde saklanır.",
     "activity.submit": "Notu ekle",
     "activity.count.one": "{count} kayıt",
     "activity.count.other": "{count} kayıt",
@@ -568,7 +569,8 @@ export const messages = {
       "Track notes and work item changes in chronological order.",
     "activity.addNote": "Add a note",
     "activity.placeholder": "Write an update about this work item…",
-    "activity.noteHelp": "Notes are stored permanently in the work history.",
+    "activity.noteHelp":
+      "Formatted notes are stored permanently as Markdown in the work history.",
     "activity.submit": "Add note",
     "activity.count.one": "{count} entry",
     "activity.count.other": "{count} entries",

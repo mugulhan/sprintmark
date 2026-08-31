@@ -1409,15 +1409,23 @@ dd {
   border-radius: 10px;
   background: #f8fbff;
 }
-.activity-composer label {
+.activity-composer-label {
   color: var(--navy);
   font-size: 13px;
   font-weight: 800;
 }
-.activity-composer textarea {
-  width: 100%;
-  min-height: 76px;
-  resize: vertical;
+.activity-editor {
+  min-width: 0;
+  background: #fff;
+}
+.activity-editor .toastui-editor-defaultUI {
+  overflow: hidden;
+  border-color: #b8c9d8;
+  border-radius: 8px;
+}
+.activity-editor .toastui-editor-toolbar {
+  overflow-x: auto;
+  background: #f4f8fb;
 }
 .activity-composer-actions {
   display: flex;
@@ -1490,12 +1498,24 @@ dd {
   line-height: 1.5;
 }
 .activity-comment {
+  min-width: 0;
   margin: 0;
   padding: 10px 12px;
   border: 1px solid #d8e3ef;
   border-radius: 8px;
   background: #fff;
   white-space: normal;
+}
+.activity-comment .toastui-editor-contents {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.activity-comment .toastui-editor-contents > :first-child {
+  margin-top: 0;
+}
+.activity-comment .toastui-editor-contents > :last-child {
+  margin-bottom: 0;
 }
 .activity-changes {
   margin: 0;

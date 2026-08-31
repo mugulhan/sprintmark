@@ -359,16 +359,18 @@
               <span id="activityCount" class="activity-count"></span>
             </div>
             <form id="activityForm" class="activity-composer">
-              <label for="activityBody" data-i18n="activity.addNote">
+              <span
+                id="activityEditorLabel"
+                class="activity-composer-label"
+                data-i18n="activity.addNote"
+              >
                 Not ekle
-              </label>
-              <textarea
-                id="activityBody"
-                maxlength="10000"
-                rows="3"
-                placeholder="Bu görevle ilgili bir güncelleme yazın…"
-                data-i18n-placeholder="activity.placeholder"
-              ></textarea>
+              </span>
+              <div
+                id="activityEditor"
+                class="rich-editor activity-editor"
+                aria-labelledby="activityEditorLabel"
+              ></div>
               <div class="activity-composer-actions">
                 <small data-i18n="activity.noteHelp">
                   Notlar görev geçmişinde kalıcı olarak saklanır.

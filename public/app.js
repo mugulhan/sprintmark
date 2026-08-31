@@ -34,6 +34,8 @@ const state = {
   sprintSelection: { active: false, start: null },
   detailEditor: null,
   detailViewer: null,
+  activityEditor: null,
+  activityViewers: [],
   documentPreviewViewer: null,
   createEditor: null,
   createDraftId: null,
@@ -491,6 +493,12 @@ const editorToolbar = [
   ["table", "link", "image"],
   ["code", "codeblock"],
 ];
+const activityEditorToolbar = [
+  ["heading", "bold", "italic", "strike"],
+  ["quote", "ul", "ol"],
+  ["table", "link"],
+  ["code", "codeblock"],
+];
 function sanitizeEditorHtml(html) {
   return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 }
@@ -500,6 +508,8 @@ function makeEditor(
   height = "430px",
   onChange = null,
   imageUploader = null,
+  toolbarItems = editorToolbar,
+  placeholder = "",
 ) {
   const editor = new window.toastui.Editor({
     el: element,
@@ -509,7 +519,8 @@ function makeEditor(
     hideModeSwitch: true,
     usageStatistics: false,
     initialValue,
-    toolbarItems: editorToolbar,
+    placeholder,
+    toolbarItems,
     customHTMLSanitizer: sanitizeEditorHtml,
     hooks: imageUploader
       ? {
@@ -1099,7 +1110,7 @@ function activityValue(field, value) {
 function activityDescription(activity) {
   if (activity.type === "created") return t("activity.created");
   if (activity.type === "comment")
-    return `<p class="activity-comment">${escapeHtml(activity.body).replace(/\n/g, "<br>")}</p>`;
+    return `<div class="activity-comment markdown" data-activity-comment="${escapeHtml(activity.id)}"></div>`;
   if (activity.type === "attachment_added")
     return t("activity.attachmentAdded", {
       name: escapeHtml(activity.details?.name || t("file.generic")),
@@ -1128,6 +1139,8 @@ function activityDescription(activity) {
   return t("activity.updated");
 }
 function renderActivity(item) {
+  for (const viewer of state.activityViewers) viewer.destroy();
+  state.activityViewers = [];
   const activities = [...(item.activities || [])].sort((a, b) =>
     String(b.created_at).localeCompare(String(a.created_at)),
   );
@@ -1146,6 +1159,40 @@ function renderActivity(item) {
         )
         .join("")
     : `<li class="activity-empty">${t("activity.empty")}</li>`;
+  const comments = new Map(
+    activities
+      .filter((activity) => activity.type === "comment")
+      .map((activity) => [String(activity.id), activity]),
+  );
+  for (const element of $("activityList").querySelectorAll(
+    "[data-activity-comment]",
+  )) {
+    const activity = comments.get(element.dataset.activityComment);
+    if (!activity) continue;
+    const viewer = window.toastui.Editor.factory({
+      el: element,
+      viewer: true,
+      initialValue: activity.body || "",
+      usageStatistics: false,
+      customHTMLSanitizer: sanitizeEditorHtml,
+    });
+    state.activityViewers.push(viewer);
+    openLinksInNewTab(element);
+  }
+}
+function resetActivityEditor() {
+  state.activityEditor?.destroy();
+  state.activityEditor = null;
+  $("activityEditor").innerHTML = "";
+  state.activityEditor = makeEditor(
+    $("activityEditor"),
+    "",
+    "220px",
+    null,
+    null,
+    activityEditorToolbar,
+    t("activity.placeholder"),
+  );
 }
 function renderWorkItemChrome(item) {
   $("detailTitle").textContent = item.title;
@@ -1255,7 +1302,10 @@ async function openItem(key, push = true) {
   if (!$("detail").open) $("detail").showModal();
   renderBreadcrumb();
   updateDocumentTitle(item);
-  window.requestAnimationFrame(() => renderWorkItemViewer(item.body));
+  window.requestAnimationFrame(() => {
+    renderWorkItemViewer(item.body);
+    resetActivityEditor();
+  });
 }
 async function createDraft() {
   const response = await apiFetch("/api/v1/drafts", { method: "POST" });
@@ -1990,7 +2040,7 @@ $("editMetadata").onsubmit = async (event) => {
 $("activityForm").onsubmit = async (event) => {
   event.preventDefault();
   if (!state.selected) return;
-  const body = $("activityBody").value.trim();
+  const body = state.activityEditor?.getMarkdown().trim() || "";
   if (!body) return;
   const button = $("addActivity");
   button.disabled = true;
@@ -2018,7 +2068,7 @@ $("activityForm").onsubmit = async (event) => {
   state.items = state.items.map((item) =>
     item.uid === result.record.uid ? result.record : item,
   );
-  $("activityBody").value = "";
+  state.activityEditor?.setMarkdown("");
   renderWorkItemChrome(result.record);
   render();
 };
@@ -2061,6 +2111,11 @@ $("detail").addEventListener("close", () => {
   state.detailViewer = null;
   state.detailEditor?.destroy();
   state.detailEditor = null;
+  state.activityEditor?.destroy();
+  state.activityEditor = null;
+  for (const viewer of state.activityViewers) viewer.destroy();
+  state.activityViewers = [];
+  $("activityEditor").innerHTML = "";
   state.editingWorkItem = false;
   state.detailDirty = false;
   if (location.pathname.startsWith("/work-items/"))
