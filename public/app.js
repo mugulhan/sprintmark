@@ -443,18 +443,6 @@ function returnPathContext() {
   }
   return null;
 }
-function renderDetailBack() {
-  const key = state.itemTrail.at(-1);
-  const button = $("detailBack");
-  button.hidden = !key;
-  if (!key) {
-    $("detailBackLabel").textContent = "";
-    return;
-  }
-  $("detailBackLabel").textContent = key;
-  button.setAttribute("aria-label", t("reference.backTo", { key }));
-  button.title = t("reference.backTo", { key });
-}
 function breadcrumbItems() {
   const project = currentProject();
   const items = [
@@ -1573,6 +1561,55 @@ function setView(view, updateAddress = true) {
   }
   render();
 }
+
+async function applyLocationRoute() {
+  const path = location.pathname;
+  const projectRoute = path.match(/^\/projects\/(PRJ-\d{3})/i);
+  const requestedKey =
+    projectRoute?.[1]?.toUpperCase() ||
+    new window.URLSearchParams(location.search).get("project")?.toUpperCase();
+  const project = state.projects.find(
+    (candidate) => candidate.key === requestedKey,
+  );
+  const projectChanged = Boolean(
+    project && project.key !== state.selectedProject,
+  );
+  if (project) {
+    state.selectedProject = project.key;
+    window.localStorage.setItem("work-tracker-project", project.key);
+  }
+  state.view = path.startsWith("/projects")
+    ? "projects"
+    : path.startsWith("/backlog")
+      ? "backlog"
+      : "calendar";
+  state.projectIndex =
+    state.view === "projects" &&
+    (path === "/projects" || path === "/projects/");
+  const requestedSection = new window.URLSearchParams(location.search).get(
+    "tab",
+  );
+  state.projectSection =
+    state.view === "projects" &&
+    ["documents", "people"].includes(requestedSection)
+      ? requestedSection
+      : "overview";
+  if (projectChanged) {
+    state.projectInsights = null;
+    state.insightProjectKey = state.selectedProject;
+    state.insightPage = 1;
+    await Promise.all([
+      loadProjectCollaborators(state.selectedProject),
+      loadProjectInsights({ renderAfter: false }),
+    ]);
+  }
+  if (state.projectSection === "documents") await loadProjectDocuments();
+  if (state.projectSection === "people" && currentProject()) {
+    const response = await apiFetch(`/api/v1/projects/${currentProject().key}`);
+    if (response.ok) updateProjectInState(await response.json());
+  }
+  render();
+}
 function activityFieldName(field) {
   return (
     {
@@ -1762,7 +1799,6 @@ function renderFollowerOptions(query = "") {
     .join("");
 }
 function renderWorkItemChrome(item, { deferActivity = false } = {}) {
-  renderDetailBack();
   $("detailTitle").textContent = item.title;
   $("detailKey").textContent = item.key;
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
@@ -1841,7 +1877,6 @@ function renderWorkItemChrome(item, { deferActivity = false } = {}) {
   translateDocument();
 }
 function renderWorkItemLoading(item) {
-  renderDetailBack();
   $("detailTitle").textContent = item?.title || t("work.loading");
   $("detailKey").textContent = item?.key || "";
   $("detailUid").textContent = item?.uid ? `UUID ${item.uid.slice(0, 8)}` : "";
@@ -2693,7 +2728,6 @@ function handleProjectAction(action) {
     return $("sprintDialog").showModal();
   if (action === "edit") openProjectEdit();
 }
-$("newProject").onclick = () => $("projectDialog").showModal();
 $("newProjectFromList").onclick = () => $("projectDialog").showModal();
 $("projectForm").onsubmit = async (event) => {
   event.preventDefault();
@@ -2932,7 +2966,17 @@ $("detail").addEventListener("close", () => {
     const navigation = history.state;
     if (navigation?.originInHistory)
       history.go(-((navigation.trail?.length || 0) + 1));
-    else history.pushState({}, "", state.returnPath || "/");
+    else {
+      const project = currentProject();
+      const fallback =
+        state.returnPath && state.returnPath !== "/"
+          ? state.returnPath
+          : project
+            ? projectCanonical(project)
+            : "/projects/";
+      history.replaceState({}, "", fallback);
+      void applyLocationRoute();
+    }
   }
   state.suppressDetailHistory = false;
   state.itemTrail = [];
@@ -2972,7 +3016,7 @@ window.onpopstate = async (event) => {
     state.suppressDetailHistory = true;
     $("detail").close();
   }
-  location.reload();
+  await applyLocationRoute();
 };
 window.addEventListener("beforeunload", (event) => {
   if (!hasUnsavedWorkItem() && !hasUnsavedNewItem()) return;
@@ -2980,10 +3024,6 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 $("newItem").onclick = () => openCreateDialog();
-$("detailBack").onclick = () => {
-  if (state.editingWorkItem && !cancelWorkItemEdit()) return;
-  history.back();
-};
 $("localeSelect").onchange = (event) => {
   window.localStorage.setItem("sprintmark-locale", event.target.value);
   document.documentElement.lang = event.target.value;
