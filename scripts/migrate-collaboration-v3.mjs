@@ -105,7 +105,7 @@ export async function migrateCollaboration({
 
   const records = await loadRecords(workspace);
   const workItemChanges = records.flatMap((record) => {
-    if (record.schema_version === 3) return [];
+    if (record.schema_version >= 3) return [];
     const normalized = normalizeWorkItem(record, owner.id);
     normalized.status = STATUS_MAP[record.status] || record.status;
     normalized.reporter_id = owner.id;

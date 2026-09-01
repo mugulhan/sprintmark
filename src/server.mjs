@@ -13,6 +13,7 @@ import { ProjectStore } from "./projects.mjs";
 import { SprintStore } from "./sprints.mjs";
 import { FILE_LIMIT, fileTypeForName } from "./files.mjs";
 import { CollaborationStore } from "./collaboration.mjs";
+import { buildProjectInsights } from "./insights.mjs";
 import { AuthService, authConfigFromEnv, parseCookies } from "./auth.mjs";
 import {
   buildAuthEnvironment,
@@ -180,6 +181,15 @@ function publicProject(project, { includeActivities = true } = {}) {
   delete safe._path;
   if (!includeActivities) delete safe.activities;
   return safe;
+}
+
+function collaboratorSummary(user) {
+  return {
+    id: user.id,
+    display_name: user.display_name,
+    avatar_url: user.avatar_url || null,
+    status: user.status,
+  };
 }
 
 function contentDisposition(filename, disposition) {
@@ -545,11 +555,17 @@ export function createWorkTrackerServer({
         });
       if (path === "/api/v1/users" && req.method === "GET") {
         const result = await collaboration.users();
+        const activeUsers = result.items.filter(
+          (user) => user.status === "active",
+        );
         return send(
           res,
           200,
           {
-            items: result.items.filter((user) => user.status === "active"),
+            items:
+              session.user.system_role === "admin"
+                ? activeUsers
+                : activeUsers.map(collaboratorSummary),
             invitations:
               session.user.system_role === "admin"
                 ? result.invitations
@@ -700,6 +716,45 @@ export function createWorkTrackerServer({
             await projectStore.create(await jsonBody(req), session.user),
           ),
         );
+      }
+      const projectInsightsApi = path.match(
+        /^\/api\/v1\/projects\/(PRJ-\d{3})\/insights$/i,
+      );
+      if (projectInsightsApi && req.method === "GET") {
+        const project = await projectStore.byKey(projectInsightsApi[1]);
+        if (!project) return send(res, 404, { error: "not_found" });
+        assertProjectAccess(project, session.user, directory, "viewer");
+        const records = (await store.all()).filter(
+          (record) => record.project_key === project.key,
+        );
+        return send(
+          res,
+          200,
+          buildProjectInsights(records, {
+            filter: url.searchParams.get("filter") || "all",
+            sort: url.searchParams.get("sort") || "updated",
+            page: url.searchParams.get("page") || 1,
+            pageSize: url.searchParams.get("page_size") || 20,
+          }),
+        );
+      }
+      const projectCollaboratorsApi = path.match(
+        /^\/api\/v1\/projects\/(PRJ-\d{3})\/collaborators$/i,
+      );
+      if (projectCollaboratorsApi && req.method === "GET") {
+        const project = await projectStore.byKey(projectCollaboratorsApi[1]);
+        if (!project) return send(res, 404, { error: "not_found" });
+        assertProjectAccess(project, session.user, directory, "viewer");
+        const items = directory.users
+          .filter(
+            (user) =>
+              user.status === "active" && projectRole(project, user, directory),
+          )
+          .map(collaboratorSummary)
+          .sort((left, right) =>
+            left.display_name.localeCompare(right.display_name),
+          );
+        return send(res, 200, { items, count: items.length });
       }
       const projectKeyApi = path.match(/^\/api\/v1\/projects\/(PRJ-\d{3})$/i);
       if (projectKeyApi && req.method === "GET") {

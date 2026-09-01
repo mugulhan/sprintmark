@@ -179,7 +179,7 @@ test("collaboration migration has a write-free dry-run, backup and idempotency",
   const itemPath = join(workspace, "work-items", "tasks", "mig-0001.md");
   const raw = await readFile(itemPath, "utf8");
   const legacy = raw
-    .replace("schema_version: 3", "schema_version: 2")
+    .replace("schema_version: 4", "schema_version: 2")
     .replace("status: planned", "status: open")
     .replace(/team_id:.*\n/, "team: content-technical\n")
     .replace(/reporter_id:.*\n/, "")
@@ -198,7 +198,7 @@ test("collaboration migration has a write-free dry-run, backup and idempotency",
   const applied = await migrateCollaboration({ workspace, apply: true });
   assert.ok(applied.backup);
   const migrated = await new WorkItemStore(workspace).byUid(item.uid);
-  assert.equal(migrated.schema_version, 3);
+  assert.equal(migrated.schema_version, 4);
   assert.equal(migrated.status, "planned");
   const second = await migrateCollaboration({ workspace, apply: false });
   assert.equal(second.work_items_to_migrate, 0);

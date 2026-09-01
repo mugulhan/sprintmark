@@ -24,6 +24,7 @@
     "setup:auth": "node scripts/setup-auth.mjs",
     "migrate:v2": "node scripts/migrate-work-items-v2.mjs",
     "migrate:collaboration": "node scripts/migrate-collaboration-v3.mjs",
+    "migrate:delivery": "node scripts/migrate-delivery-v4.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "lint": "eslint .",
     "format:check": "prettier --check .",

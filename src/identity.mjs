@@ -85,8 +85,8 @@ export function contentEtag(raw) {
 
 export function validateRecord(record) {
   const errors = [];
-  if (![2, 3].includes(record.schema_version))
-    errors.push("schema_version must be 2 or 3");
+  if (![2, 3, 4].includes(record.schema_version))
+    errors.push("schema_version must be 2, 3 or 4");
   if (!UUID_PATTERN.test(record.uid || "")) errors.push("uid must be a UUID");
   if (!KEY_PATTERN.test(record.key || "")) errors.push("key is invalid");
   if (!KINDS.has(record.kind)) errors.push("kind is invalid");
@@ -98,12 +98,12 @@ export function validateRecord(record) {
   if (record.schema_version === 2 && !String(record.team || "").trim())
     errors.push("team is invalid");
   if (
-    record.schema_version === 3 &&
+    record.schema_version >= 3 &&
     record.team_id &&
     !/^team-[0-9a-z-]+$/i.test(record.team_id)
   )
     errors.push("team_id is invalid");
-  if (record.schema_version === 3) {
+  if (record.schema_version >= 3) {
     if (!/^usr-[0-9a-z-]+$/i.test(record.reporter_id || ""))
       errors.push("reporter_id is invalid");
     for (const field of ["assignee_id", "reviewer_id"]) {
@@ -117,6 +117,27 @@ export function validateRecord(record) {
       !record.follower_ids.every((id) => /^usr-[0-9a-z-]+$/i.test(id))
     )
       errors.push("follower_ids is invalid");
+  }
+  if (record.schema_version === 4) {
+    if (!/^usr-[0-9a-z-]+$/i.test(record.creator_id || ""))
+      errors.push("creator_id is invalid");
+    if (
+      record.estimate_minutes !== null &&
+      record.estimate_minutes !== undefined &&
+      (!Number.isInteger(record.estimate_minutes) ||
+        record.estimate_minutes < 1 ||
+        record.estimate_minutes > 525600)
+    )
+      errors.push(
+        "estimate_minutes must be an integer between 1 and 525600 or null",
+      );
+    if (
+      record.started_at !== null &&
+      record.started_at !== undefined &&
+      (typeof record.started_at !== "string" ||
+        Number.isNaN(Date.parse(record.started_at)))
+    )
+      errors.push("started_at must be an ISO timestamp or null");
   }
   if (
     record.scheduled_for &&

@@ -24,8 +24,8 @@ export const PROJECT_STATUSES = new Set(["active", "archived"]);
 
 export function validateProject(project) {
   const errors = [];
-  if (![1, 2].includes(project.schema_version))
-    errors.push("schema_version must be 1 or 2");
+  if (![1, 2, 3].includes(project.schema_version))
+    errors.push("schema_version must be 1, 2 or 3");
   if (!UUID_PATTERN.test(project.uid || "")) errors.push("uid must be a UUID");
   if (!PROJECT_KEY_PATTERN.test(project.key || ""))
     errors.push("key is invalid");
@@ -42,7 +42,7 @@ export function validateProject(project) {
   if (!PROJECT_STATUSES.has(project.status)) errors.push("status is invalid");
   if (!Array.isArray(project.documents))
     errors.push("documents must be an array");
-  if (project.schema_version === 2) {
+  if (project.schema_version >= 2) {
     if (!/^usr-[0-9a-z-]+$/i.test(project.owner_user_id || ""))
       errors.push("owner_user_id is invalid");
     if (!Array.isArray(project.members))
@@ -67,14 +67,56 @@ export function validateProject(project) {
     if (!Array.isArray(project.activities))
       errors.push("activities must be an array");
   }
+  if (project.schema_version === 3) {
+    if (!/^usr-[0-9a-z-]+$/i.test(project.creator_id || ""))
+      errors.push("creator_id is invalid");
+    for (const field of ["created_at", "updated_at"]) {
+      if (
+        typeof project[field] !== "string" ||
+        Number.isNaN(Date.parse(project[field]))
+      )
+        errors.push(`${field} must be an ISO timestamp`);
+    }
+    if (
+      project.archived_at !== null &&
+      project.archived_at !== undefined &&
+      (typeof project.archived_at !== "string" ||
+        Number.isNaN(Date.parse(project.archived_at)))
+    )
+      errors.push("archived_at must be an ISO timestamp or null");
+    if (project.status === "active" && project.archived_at)
+      errors.push("archived_at is only valid for archived projects");
+  }
   return errors;
 }
 
-function normalizeProject(project, fallbackUserId = "usr-local") {
+export function normalizeProject(project, fallbackUserId = "usr-local") {
+  const createdActivity = (project.activities || []).find(
+    (activity) => activity.type === "created",
+  );
+  const createdActorId = /^usr-[0-9a-z-]+$/i.test(
+    createdActivity?.actor?.id || "",
+  )
+    ? createdActivity.actor.id
+    : null;
   return {
     ...project,
-    schema_version: 2,
+    schema_version: 3,
     owner_user_id: project.owner_user_id || fallbackUserId,
+    creator_id:
+      project.creator_id ||
+      createdActorId ||
+      project.owner_user_id ||
+      fallbackUserId,
+    created_at: project.created_at || createdActivity?.created_at || null,
+    updated_at:
+      project.updated_at ||
+      project.created_at ||
+      createdActivity?.created_at ||
+      null,
+    archived_at:
+      project.archived_at ||
+      (project.status === "archived" ? project.updated_at || null : null),
     members: project.members || [],
     team_ids: project.team_ids || [
       "team-content-technical",
@@ -165,7 +207,7 @@ export class ProjectStore {
     );
     const now = new Date().toISOString();
     const project = {
-      schema_version: 2,
+      schema_version: 3,
       uid: newUid(),
       key: `PRJ-${String(max + 1).padStart(3, "0")}`,
       code: String(input.code || "")
@@ -177,11 +219,13 @@ export class ProjectStore {
       status: input.status || "active",
       documents: [],
       owner_user_id: actor?.id || "usr-local",
+      creator_id: actor?.id || "usr-local",
       members: [],
       team_ids: [...new Set(input.team_ids || [])],
       activities: [projectActivity("created", actor)],
       created_at: now,
       updated_at: now,
+      archived_at: null,
     };
     const errors = validateProject(project);
     if (errors.length)
@@ -215,12 +259,19 @@ export class ProjectStore {
           statusCode: 400,
         });
     }
+    const now = new Date().toISOString();
     const next = {
       ...existing,
       ...input,
       name: String(input.name ?? existing.name).trim(),
       description: String(input.description ?? existing.description).trim(),
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      archived_at:
+        existing.status !== "archived" && input.status === "archived"
+          ? now
+          : existing.status === "archived" && input.status === "active"
+            ? null
+            : existing.archived_at,
       activities: [
         ...existing.activities,
         projectActivity("changed", actor, {

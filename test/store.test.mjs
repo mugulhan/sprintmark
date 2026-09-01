@@ -63,7 +63,7 @@ test("store persists priority and planned time while rejecting invalid values", 
     scheduled_for: "2026-08-26",
     scheduled_time: "14:35",
   });
-  assert.equal(created.schema_version, 3);
+  assert.equal(created.schema_version, 4);
   assert.equal(created.priority, "critical");
   assert.equal(created.scheduled_time, "14:35");
   await assert.rejects(
@@ -107,6 +107,50 @@ test("store timestamps done transitions and clears completion when reopened", as
   assert.ok(
     Date.parse(completedAgain.completed_at) >=
       Date.parse(completed.completed_at),
+  );
+});
+
+test("store tracks immutable creators, effort and cycle timestamps", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sprintmark-timing-"));
+  const store = new WorkItemStore(workspace);
+  const actor = { id: "usr-owner", display_name: "Owner" };
+  const created = await store.create(
+    { title: "Measured work", estimate_minutes: 240 },
+    { actor },
+  );
+  assert.equal(created.schema_version, 4);
+  assert.equal(created.creator_id, actor.id);
+  assert.equal(created.estimate_minutes, 240);
+  assert.equal(created.started_at, null);
+
+  const started = await store.patch(
+    created.uid,
+    { status: "in_progress" },
+    created._etag,
+    { actor },
+  );
+  assert.equal(started.started_at, started.updated_at);
+  const completed = await store.patch(
+    started.uid,
+    { status: "done" },
+    started._etag,
+    { actor },
+  );
+  assert.ok(completed.completed_at);
+
+  const reopened = await store.patch(
+    completed.uid,
+    { status: "in_progress" },
+    completed._etag,
+    { actor },
+  );
+  assert.equal(reopened.completed_at, null);
+  assert.equal(reopened.started_at, reopened.updated_at);
+  assert.equal(reopened.creator_id, actor.id);
+
+  await assert.rejects(
+    () => store.create({ title: "Invalid estimate", estimate_minutes: 0 }),
+    (error) => error.statusCode === 400,
   );
 });
 
