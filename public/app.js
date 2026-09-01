@@ -1,4 +1,11 @@
 import { locale, t, tp, translateDocument } from "./i18n.js";
+import {
+  matchWorkItemCommand,
+  searchWorkItemReferences,
+  WORK_ITEM_KEY_PATTERN,
+  workItemKeyFromHref,
+  workItemReferenceHref,
+} from "./work-item-references.js";
 
 const initialView = location.pathname.startsWith("/projects")
   ? "projects"
@@ -47,6 +54,9 @@ const state = {
   editingWorkItem: false,
   detailDirty: false,
   returnPath: "/",
+  itemTrail: [],
+  suppressDetailHistory: false,
+  referencePreviewTimer: null,
 };
 const $ = (id) => document.getElementById(id);
 const nativeFetch = window.fetch.bind(window);
@@ -388,6 +398,18 @@ function returnPathContext() {
   }
   return null;
 }
+function renderDetailBack() {
+  const key = state.itemTrail.at(-1);
+  const button = $("detailBack");
+  button.hidden = !key;
+  if (!key) {
+    $("detailBackLabel").textContent = "";
+    return;
+  }
+  $("detailBackLabel").textContent = key;
+  button.setAttribute("aria-label", t("reference.backTo", { key }));
+  button.title = t("reference.backTo", { key });
+}
 function breadcrumbItems() {
   const project = currentProject();
   const items = [
@@ -488,6 +510,177 @@ const activityEditorToolbar = [
   ["table", "link"],
   ["code", "codeblock"],
 ];
+let referencePickerId = 0;
+
+function editorContentElement(element) {
+  return (
+    element.querySelector(".toastui-editor-ww-container .ProseMirror") ||
+    element.querySelector('.ProseMirror[contenteditable="true"]')
+  );
+}
+
+function editorCommandBeforeCursor(element) {
+  const content = editorContentElement(element);
+  const selection = window.getSelection();
+  if (!content || !selection?.rangeCount || !selection.isCollapsed) return null;
+  const anchor = selection.anchorNode;
+  if (!anchor || !content.contains(anchor)) return null;
+  const parent =
+    anchor.nodeType === window.Node.ELEMENT_NODE
+      ? anchor
+      : anchor.parentElement;
+  if (parent?.closest("a, code, pre")) return null;
+  const block =
+    parent?.closest("p, li, h1, h2, h3, h4, h5, h6, blockquote") || content;
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  try {
+    range.setEnd(anchor, selection.anchorOffset);
+  } catch {
+    return null;
+  }
+  return matchWorkItemCommand(range.toString());
+}
+
+function attachWorkItemReferencePicker(editor, element) {
+  const picker = document.createElement("div");
+  const pickerId = `workReferencePicker${++referencePickerId}`;
+  picker.id = pickerId;
+  picker.className = "work-reference-picker";
+  picker.setAttribute("role", "listbox");
+  picker.setAttribute("aria-label", t("reference.results"));
+  picker.hidden = true;
+  element.classList.add("reference-editor-host");
+  element.append(picker);
+  const content = editorContentElement(element);
+  if (!content) return { destroy() {} };
+  content.setAttribute("aria-autocomplete", "list");
+  content.setAttribute("aria-controls", pickerId);
+  content.setAttribute("aria-expanded", "false");
+  let results = [];
+  let activeIndex = 0;
+  let commandRange = null;
+
+  const hide = () => {
+    picker.hidden = true;
+    picker.innerHTML = "";
+    content.setAttribute("aria-expanded", "false");
+    content.removeAttribute("aria-activedescendant");
+    results = [];
+    commandRange = null;
+  };
+  const render = () => {
+    picker.innerHTML = results.length
+      ? results
+          .map((item, index) => {
+            const project =
+              state.projects.find(
+                (candidate) => candidate.key === item.project_key,
+              )?.name || item.project_key;
+            return `<button type="button" role="option" id="${pickerId}Option${index}" data-reference-result="${escapeHtml(item.key)}" aria-selected="${index === activeIndex}"><strong>${escapeHtml(item.key)}</strong><span>${escapeHtml(item.title)}</span><small>${escapeHtml(project)} · ${escapeHtml(statusName(item.status))}</small></button>`;
+          })
+          .join("")
+      : `<p class="work-reference-empty">${escapeHtml(t("reference.noResults"))}</p>`;
+    content.setAttribute("aria-expanded", "true");
+    if (results.length)
+      content.setAttribute(
+        "aria-activedescendant",
+        `${pickerId}Option${activeIndex}`,
+      );
+    else content.removeAttribute("aria-activedescendant");
+    picker.hidden = false;
+    const selection = window.getSelection();
+    if (selection?.rangeCount) {
+      const caret = selection.getRangeAt(0).getBoundingClientRect();
+      const host = element.getBoundingClientRect();
+      const pickerBounds = picker.getBoundingClientRect();
+      picker.style.left = `${Math.max(8, Math.min(caret.left - host.left, host.width - pickerBounds.width - 8))}px`;
+      const below = caret.bottom - host.top + 8;
+      picker.style.top = `${below + pickerBounds.height <= host.height ? below : Math.max(8, caret.top - host.top - pickerBounds.height - 8)}px`;
+    }
+  };
+  const update = () => {
+    const command = editorCommandBeforeCursor(element);
+    const selection = editor.getSelection();
+    if (!command || !Array.isArray(selection)) return hide();
+    const end = selection[1];
+    commandRange = { start: end - command.command.length, end };
+    results = searchWorkItemReferences(
+      state.items,
+      state.projects,
+      command.query,
+      {
+        excludeKey: state.editingWorkItem ? state.selected?.key : null,
+      },
+    );
+    activeIndex = Math.min(activeIndex, Math.max(0, results.length - 1));
+    render();
+  };
+  const selectResult = (item) => {
+    if (!item || !commandRange) return;
+    const start = commandRange.start;
+    editor.replaceSelection(item.key, start, commandRange.end);
+    editor.setSelection(start, start + item.key.length);
+    editor.exec("addLink", { linkUrl: workItemReferenceHref(item.key) });
+    editor.setSelection(start + item.key.length);
+    hide();
+    editor.focus();
+  };
+  const onInput = () => window.requestAnimationFrame(update);
+  const onKeydown = (event) => {
+    if (picker.hidden) {
+      if (event.key === "Escape") hide();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!results.length) return;
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      activeIndex = (activeIndex + direction + results.length) % results.length;
+      render();
+      picker
+        .querySelector(`[data-reference-result="${results[activeIndex].key}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (event.key === "Enter" && results.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      selectResult(results[activeIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hide();
+    }
+  };
+  const onPointerdown = (event) => {
+    const option = event.target.closest("[data-reference-result]");
+    if (!option) return;
+    event.preventDefault();
+    selectResult(
+      results.find((item) => item.key === option.dataset.referenceResult),
+    );
+  };
+  content.addEventListener("input", onInput);
+  content.addEventListener("keyup", onInput);
+  content.addEventListener("compositionend", onInput);
+  content.addEventListener("keydown", onKeydown, true);
+  picker.addEventListener("pointerdown", onPointerdown);
+  editor.on("change", onInput);
+  return {
+    destroy() {
+      content.removeEventListener("input", onInput);
+      content.removeEventListener("keyup", onInput);
+      content.removeEventListener("compositionend", onInput);
+      content.removeEventListener("keydown", onKeydown, true);
+      picker.removeEventListener("pointerdown", onPointerdown);
+      picker.remove();
+      element.classList.remove("reference-editor-host");
+    },
+  };
+}
+
 function sanitizeEditorHtml(html) {
   return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 }
@@ -528,6 +721,7 @@ function makeEditor(
         }
       : undefined,
   });
+  const referencePicker = attachWorkItemReferencePicker(editor, element);
   const hidePopup = () => {
     editor.eventEmitter.emit("closePopup");
     element
@@ -549,6 +743,7 @@ function makeEditor(
   element.addEventListener("keydown", closePopup, true);
   const destroy = editor.destroy.bind(editor);
   editor.destroy = () => {
+    referencePicker.destroy();
     element.removeEventListener("pointerdown", closePopup, true);
     element.removeEventListener("click", closePopup, true);
     element.removeEventListener("keydown", closePopup, true);
@@ -560,9 +755,128 @@ function makeEditor(
 }
 function openLinksInNewTab(root) {
   for (const link of root.querySelectorAll("a")) {
+    if (workItemKeyFromHref(link.href, location.origin)) {
+      link.removeAttribute("target");
+      link.removeAttribute("rel");
+      continue;
+    }
     link.target = "_blank";
     link.rel = "noopener noreferrer";
   }
+}
+
+function workItemReferenceLink(item, key = item?.key) {
+  const link = document.createElement("a");
+  link.href = workItemReferenceHref(key);
+  link.className = "work-item-reference";
+  link.dataset.workItemKey = key;
+  const keyPart = document.createElement("strong");
+  keyPart.textContent = key;
+  link.append(keyPart);
+  if (item) {
+    const title = document.createElement("span");
+    title.textContent = `· ${item.title}`;
+    link.append(title);
+    link.setAttribute(
+      "aria-label",
+      t("reference.openNamed", { key: item.key, title: item.title }),
+    );
+  } else {
+    link.classList.add("is-unavailable");
+    link.setAttribute("aria-label", t("reference.unavailableNamed", { key }));
+  }
+  return link;
+}
+
+function decorateWorkItemReferences(root) {
+  const items = new Map(state.items.map((item) => [item.key, item]));
+  const textNodes = [];
+  const walker = document.createTreeWalker(root, window.NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent?.match(WORK_ITEM_KEY_PATTERN))
+        return window.NodeFilter.FILTER_REJECT;
+      if (
+        node.parentElement?.closest(
+          "a, code, pre, script, style, textarea, input, button",
+        )
+      )
+        return window.NodeFilter.FILTER_REJECT;
+      return window.NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  for (const node of textNodes) {
+    const text = node.textContent;
+    const matcher = new RegExp(WORK_ITEM_KEY_PATTERN.source, "gi");
+    let cursor = 0;
+    let matched = false;
+    const fragment = document.createDocumentFragment();
+    for (const match of text.matchAll(matcher)) {
+      const key = match[1].toUpperCase();
+      const item = items.get(key);
+      if (!item) continue;
+      matched = true;
+      fragment.append(text.slice(cursor, match.index));
+      fragment.append(workItemReferenceLink(item));
+      cursor = match.index + match[0].length;
+    }
+    if (!matched) continue;
+    fragment.append(text.slice(cursor));
+    node.replaceWith(fragment);
+  }
+  for (const link of root.querySelectorAll("a")) {
+    const key = workItemKeyFromHref(link.href, location.origin);
+    if (!key || link.classList.contains("work-item-reference")) continue;
+    link.replaceWith(workItemReferenceLink(items.get(key), key));
+  }
+}
+
+function referencePreview() {
+  let preview = $("workReferencePreview");
+  if (preview) return preview;
+  preview = document.createElement("div");
+  preview.id = "workReferencePreview";
+  preview.className = "work-reference-preview";
+  preview.setAttribute("role", "tooltip");
+  preview.hidden = true;
+  document.body.append(preview);
+  return preview;
+}
+
+function hideReferencePreview() {
+  window.clearTimeout(state.referencePreviewTimer);
+  state.referencePreviewTimer = null;
+  const preview = $("workReferencePreview");
+  if (preview) preview.hidden = true;
+}
+
+function showReferencePreview(link) {
+  hideReferencePreview();
+  const item = state.items.find(
+    (candidate) => candidate.key === link.dataset.workItemKey,
+  );
+  if (!item) return;
+  state.referencePreviewTimer = window.setTimeout(() => {
+    const preview = referencePreview();
+    const project =
+      state.projects.find((candidate) => candidate.key === item.project_key)
+        ?.name || item.project_key;
+    preview.innerHTML = `<strong>${escapeHtml(item.key)}</strong><span>${escapeHtml(item.title)}</span><small>${escapeHtml(project)} · ${escapeHtml(statusName(item.status))} · ${escapeHtml(priorityName(item.priority))} · ${escapeHtml(teamName(item.team_id || item.team))}</small>`;
+    preview.hidden = false;
+    const bounds = link.getBoundingClientRect();
+    const previewBounds = preview.getBoundingClientRect();
+    const left = Math.min(
+      window.innerWidth - previewBounds.width - 12,
+      Math.max(12, bounds.left),
+    );
+    const below = bounds.bottom + 8;
+    const top =
+      below + previewBounds.height < window.innerHeight - 12
+        ? below
+        : Math.max(12, bounds.top - previewBounds.height - 8);
+    preview.style.left = `${left}px`;
+    preview.style.top = `${top}px`;
+  }, 240);
 }
 function linkWorkspaceReferences(root) {
   const references = new Map(
@@ -598,6 +912,7 @@ function renderWorkItemViewer(markdown) {
     customHTMLSanitizer: sanitizeEditorHtml,
   });
   linkWorkspaceReferences($("detailBody"));
+  decorateWorkItemReferences($("detailBody"));
   openLinksInNewTab($("detailBody"));
 }
 function hasUnsavedWorkItem() {
@@ -1197,6 +1512,7 @@ function renderActivity(item) {
       customHTMLSanitizer: sanitizeEditorHtml,
     });
     state.activityViewers.push(viewer);
+    decorateWorkItemReferences(element);
     openLinksInNewTab(element);
   }
 }
@@ -1215,6 +1531,7 @@ function resetActivityEditor() {
   );
 }
 function renderWorkItemChrome(item, { deferActivity = false } = {}) {
+  renderDetailBack();
   $("detailTitle").textContent = item.title;
   $("detailKey").textContent = item.key;
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
@@ -1286,6 +1603,7 @@ function renderWorkItemChrome(item, { deferActivity = false } = {}) {
   translateDocument();
 }
 function renderWorkItemLoading(item) {
+  renderDetailBack();
   $("detailTitle").textContent = item?.title || t("work.loading");
   $("detailKey").textContent = item?.key || "";
   $("detailUid").textContent = item?.uid ? `UUID ${item.uid.slice(0, 8)}` : "";
@@ -1300,13 +1618,34 @@ function renderWorkItemLoading(item) {
   if (!$("detail").open) $("detail").showModal();
 }
 async function openItem(key, push = true) {
+  key = String(key).toUpperCase();
+  if ($("detail").open && state.selected?.key === key) return;
   const requestId = ++state.itemOpenRequest;
+  const sourceKey = $("detail").open ? state.selected?.key : null;
+  if (push) {
+    if (sourceKey) state.itemTrail = [...state.itemTrail, sourceKey];
+    else {
+      state.returnPath = `${location.pathname}${location.search}`;
+      state.itemTrail = [];
+    }
+  }
   const summary = state.items.find((item) => item.key === key) || null;
   state.selected = summary;
   renderWorkItemLoading(summary);
   if (push && summary) {
-    state.returnPath = `${location.pathname}${location.search}`;
-    history.pushState({ key: summary.key }, "", canonical(summary));
+    history.pushState(
+      {
+        sprintmarkView: "work-item",
+        key: summary.key,
+        returnPath: state.returnPath,
+        trail: state.itemTrail,
+        originInHistory: sourceKey
+          ? history.state?.originInHistory !== false
+          : true,
+      },
+      "",
+      canonical(summary),
+    );
     renderBreadcrumb();
     updateDocumentTitle(summary);
   }
@@ -1326,7 +1665,10 @@ async function openItem(key, push = true) {
   }
   if (requestId !== state.itemOpenRequest || !$("detail").open) return;
   if (!response.ok) {
-    location.href = `/work-items/${key}/bulunamadi`;
+    $("detailLoading").classList.add("is-error");
+    $("detailLoadingMessage").classList.remove("visually-hidden");
+    $("detailLoadingMessage").textContent = t("reference.unavailable");
+    $("detail").setAttribute("aria-busy", "false");
     return;
   }
   const item = await response.json();
@@ -1354,8 +1696,19 @@ async function openItem(key, push = true) {
   $("editConflict").hidden = true;
   $("editWorkItem").hidden = false;
   if (push && !summary) {
-    state.returnPath = `${location.pathname}${location.search}`;
-    history.pushState({ key: item.key }, "", canonical(item));
+    history.pushState(
+      {
+        sprintmarkView: "work-item",
+        key: item.key,
+        returnPath: state.returnPath,
+        trail: state.itemTrail,
+        originInHistory: sourceKey
+          ? history.state?.originInHistory !== false
+          : true,
+      },
+      "",
+      canonical(item),
+    );
   }
   renderBreadcrumb();
   updateDocumentTitle(item);
@@ -1729,9 +2082,37 @@ async function load() {
   const route = location.pathname.match(
     /^\/work-items\/([A-Z][A-Z0-9]{1,7}-(?:\d{4}[A-Z]?|BL-\d{3}))/i,
   );
-  if (route) await openItem(route[1], false);
+  if (route) {
+    state.returnPath = history.state?.returnPath || "/";
+    state.itemTrail = Array.isArray(history.state?.trail)
+      ? history.state.trail
+      : [];
+    history.replaceState(
+      {
+        sprintmarkView: "work-item",
+        key: route[1].toUpperCase(),
+        returnPath: state.returnPath,
+        trail: state.itemTrail,
+        originInHistory: history.state?.originInHistory === true,
+      },
+      "",
+      location.href,
+    );
+    await openItem(route[1], false);
+  }
 }
 document.addEventListener("click", async (e) => {
+  const workReference = e.target.closest(".work-item-reference");
+  if (workReference) {
+    e.preventDefault();
+    hideReferencePreview();
+    if (workReference.classList.contains("is-unavailable")) {
+      alert(t("reference.unavailable"));
+      return;
+    }
+    await openItem(workReference.dataset.workItemKey);
+    return;
+  }
   const projectTab = e.target.closest("[data-project-tab]");
   if (projectTab) {
     await setProjectSection(projectTab.dataset.projectTab);
@@ -1850,6 +2231,29 @@ document.addEventListener("click", async (e) => {
   const projectAction = e.target.closest("[data-project-action]");
   if (projectAction) handleProjectAction(projectAction.dataset.projectAction);
 });
+document.addEventListener("pointerover", (event) => {
+  const link = event.target.closest?.(
+    ".work-item-reference:not(.is-unavailable)",
+  );
+  if (link && !link.contains(event.relatedTarget)) showReferencePreview(link);
+});
+document.addEventListener("pointerout", (event) => {
+  const link = event.target.closest?.(".work-item-reference");
+  if (link && !link.contains(event.relatedTarget)) hideReferencePreview();
+});
+document.addEventListener("focusin", (event) => {
+  const link = event.target.closest?.(
+    ".work-item-reference:not(.is-unavailable)",
+  );
+  if (link) showReferencePreview(link);
+});
+document.addEventListener("focusout", (event) => {
+  if (event.target.closest?.(".work-item-reference")) hideReferencePreview();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideReferencePreview();
+});
+window.addEventListener("scroll", hideReferencePreview, true);
 document.addEventListener("submit", async (event) => {
   if (event.target.id !== "projectPeopleForm") return;
   event.preventDefault();
@@ -2229,8 +2633,17 @@ $("detail").addEventListener("close", () => {
   $("activityEditor").innerHTML = "";
   state.editingWorkItem = false;
   state.detailDirty = false;
-  if (location.pathname.startsWith("/work-items/"))
-    history.pushState({}, "", state.returnPath || "/");
+  if (
+    !state.suppressDetailHistory &&
+    location.pathname.startsWith("/work-items/")
+  ) {
+    const navigation = history.state;
+    if (navigation?.originInHistory)
+      history.go(-((navigation.trail?.length || 0) + 1));
+    else history.pushState({}, "", state.returnPath || "/");
+  }
+  state.suppressDetailHistory = false;
+  state.itemTrail = [];
   state.selected = null;
   $("detailLoading").hidden = true;
   $("detailGrid").hidden = false;
@@ -2247,13 +2660,38 @@ $("createDialog").addEventListener("cancel", (event) => {
   state.createDraftId = null;
   $("createForm").reset();
 });
-window.onpopstate = () => location.reload();
+window.onpopstate = async (event) => {
+  if (state.editingWorkItem && !cancelWorkItemEdit()) {
+    history.forward();
+    return;
+  }
+  const route = location.pathname.match(
+    /^\/work-items\/([A-Z][A-Z0-9]{1,7}-(?:\d{4}[A-Z]?|BL-\d{3}))/i,
+  );
+  if (route) {
+    state.returnPath = event.state?.returnPath || state.returnPath || "/";
+    state.itemTrail = Array.isArray(event.state?.trail)
+      ? event.state.trail
+      : [];
+    await openItem(route[1], false);
+    return;
+  }
+  if ($("detail").open) {
+    state.suppressDetailHistory = true;
+    $("detail").close();
+  }
+  location.reload();
+};
 window.addEventListener("beforeunload", (event) => {
   if (!hasUnsavedWorkItem() && !hasUnsavedNewItem()) return;
   event.preventDefault();
   event.returnValue = "";
 });
 $("newItem").onclick = () => openCreateDialog();
+$("detailBack").onclick = () => {
+  if (state.editingWorkItem && !cancelWorkItemEdit()) return;
+  history.back();
+};
 $("localeSelect").onchange = (event) => {
   window.localStorage.setItem("sprintmark-locale", event.target.value);
   document.documentElement.lang = event.target.value;

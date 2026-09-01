@@ -6,6 +6,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- Added `/iş` and `/work` rich-editor commands for stable, searchable work-item references with accessible previews and same-dialog history navigation.
+- Existing bare work-item keys in descriptions and activity notes are now enriched as current, permission-aware reference chips without rewriting stored Markdown.
 - Added full-day, keyboard-accessible calendar creation surfaces with localized date and time context.
 - Added an adaptive new-item dialog that is centered on desktop and presented as a bottom sheet on mobile, with reduced-motion support.
 - Added a localized browser-based first-run wizard for local and Google authentication, including the exact Google callback URI and secure `.env.local` persistence.
