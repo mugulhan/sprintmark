@@ -1292,8 +1292,11 @@ function renderWorkItemLoading(item) {
   $("detailStatus").textContent = item ? statusName(item.status) : "";
   $("detailPriority").textContent = item ? priorityName(item.priority) : "";
   $("detailTeam").textContent = item ? teamName(item.team_id || item.team) : "";
+  $("detailLoading").classList.remove("is-error");
+  $("detailLoadingMessage").textContent = t("work.loading");
   $("detailGrid").hidden = true;
   $("detailLoading").hidden = false;
+  $("detail").setAttribute("aria-busy", "true");
   if (!$("detail").open) $("detail").showModal();
 }
 async function openItem(key, push = true) {
@@ -1314,8 +1317,11 @@ async function openItem(key, push = true) {
   try {
     response = await apiFetch(`/api/v1/work-items/${key}`);
   } catch {
-    if (requestId === state.itemOpenRequest && $("detail").open)
-      $("detailLoading").lastElementChild.textContent = t("error.itemLoad");
+    if (requestId === state.itemOpenRequest && $("detail").open) {
+      $("detailLoading").classList.add("is-error");
+      $("detailLoadingMessage").textContent = t("error.itemLoad");
+      $("detail").setAttribute("aria-busy", "false");
+    }
     return;
   }
   if (requestId !== state.itemOpenRequest || !$("detail").open) return;
@@ -1341,6 +1347,7 @@ async function openItem(key, push = true) {
   renderWorkItemChrome(item, { deferActivity: true });
   $("detailLoading").hidden = true;
   $("detailGrid").hidden = false;
+  $("detail").setAttribute("aria-busy", "false");
   $("detailBody").hidden = false;
   $("detailEditor").hidden = true;
   $("editorActions").hidden = true;

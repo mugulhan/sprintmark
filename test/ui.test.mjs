@@ -168,11 +168,32 @@ test("work-item details paint immediately and defer secondary references", async
   );
   assert.ok(loadingIndex >= 0 && loadingIndex < requestIndex);
   assert.match(html, /id="detailLoading"[^>]*role="status"/);
+  assert.match(html, /class="detail-skeleton-sidebar"/);
+  assert.match(html, /class="detail-skeleton-content"/);
   assert.match(html, /id="detailGrid" class="detail-grid"/);
   assert.match(app, /let referencesPromise = summary\?\.uid/);
   assert.match(app, /renderWorkItemChrome\(item, \{ deferActivity: true \}\)/);
   assert.match(app, /void referencesPromise[\s\S]*\.catch\(\(\) => \{\}\)/);
+  assert.match(app, /setAttribute\("aria-busy", "true"\)/);
+  assert.match(app, /setAttribute\("aria-busy", "false"\)/);
   assert.match(styles, /\.detail-loading/);
+  assert.match(styles, /\.detail-grid\[hidden\]/);
+  assert.match(styles, /@keyframes detail-skeleton-shimmer/);
+  assert.doesNotMatch(styles, /detail-loading-spinner/);
+});
+
+test("rich editor toolbar hover preserves sprite icons and exposes focus", async () => {
+  const styles = await readFile(resolve(publicRoot, "styles.css"), "utf8");
+  assert.match(styles, /button:hover\s*\{\s*background-color:/);
+  assert.doesNotMatch(styles, /button:hover\s*\{\s*background:/);
+  assert.match(
+    styles,
+    /\.rich-editor \.toastui-editor-defaultUI-toolbar button:not\(:disabled\):hover/,
+  );
+  assert.match(
+    styles,
+    /\.rich-editor \.toastui-editor-defaultUI-toolbar button:focus-visible/,
+  );
 });
 
 test("rich editor popups close when editing resumes or Escape is pressed", async () => {
