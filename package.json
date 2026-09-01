@@ -40,7 +40,7 @@
     "dompurify": "3.4.14"
   },
   "devDependencies": {
-    "esbuild": "0.25.9",
+    "esbuild": "0.28.2",
     "eslint": "^9.35.0",
     "prettier": "^3.6.2"
   }
