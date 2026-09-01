@@ -40,12 +40,33 @@ test("project navigation and Markdown rich editing are wired in the UI", async (
   assert.doesNotMatch(app, /Henüz sprint oluşturulmadı/);
 });
 
-test("task viewer links always open in a separate safe tab", async () => {
+test("task viewer keeps work references in-app and external links in a safe tab", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
   assert.match(app, /function openLinksInNewTab\(root\)/);
+  assert.match(app, /workItemKeyFromHref\(link\.href, location\.origin\)/);
+  assert.match(app, /decorateWorkItemReferences/);
   assert.match(app, /link\.target = "_blank"/);
   assert.match(app, /link\.rel = "noopener noreferrer"/);
   assert.match(app, /openLinksInNewTab\(\$\("detailBody"\)\)/);
+});
+
+test("rich editors expose searchable work item references", async () => {
+  const [html, app, styles] = await Promise.all([
+    readFile(resolve(publicRoot, "index.html"), "utf8"),
+    readFile(resolve(publicRoot, "app.js"), "utf8"),
+    readFile(resolve(publicRoot, "styles.css"), "utf8"),
+  ]);
+  assert.match(html, /id="detailBack"/);
+  assert.match(app, /attachWorkItemReferencePicker/);
+  assert.match(app, /matchWorkItemCommand/);
+  assert.match(app, /editor\.exec\("addLink"/);
+  assert.match(app, /excludeKey: state\.editingWorkItem/);
+  assert.match(app, /decorateWorkItemReferences\(element\)/);
+  assert.match(app, /state\.itemTrail/);
+  assert.match(app, /window\.onpopstate = async/);
+  assert.match(styles, /\.work-reference-picker/);
+  assert.match(styles, /\.work-item-reference/);
+  assert.match(styles, /\.work-reference-preview/);
 });
 
 test("work item detail exposes a persistent localized activity timeline", async () => {
@@ -86,7 +107,7 @@ test("browser title follows the open work item and returns to the project", asyn
   );
   assert.match(
     app,
-    /history\.pushState\(\{\}, "", state\.returnPath \|\| "\/"\)/,
+    /history\.go\(-\(\(navigation\.trail\?\.length \|\| 0\) \+ 1\)\)/,
   );
   assert.match(
     app,
@@ -97,7 +118,9 @@ test("browser title follows the open work item and returns to the project", asyn
 
 test("direct work item routes wait for the detail before load completes", async () => {
   const app = await readFile(resolve(publicRoot, "app.js"), "utf8");
-  assert.match(app, /if \(route\) await openItem\(route\[1\], false\);/);
+  assert.match(app, /if \(route\) \{/);
+  assert.match(app, /await openItem\(route\[1\], false\);/);
+  assert.match(app, /history\.replaceState/);
 });
 
 test("signed-out local mode renders an explicit local login without stale account controls", async () => {

@@ -195,7 +195,11 @@
 
     <dialog id="detail" aria-labelledby="detailTitle">
       <div class="dialog-head">
-        <div>
+        <div class="detail-heading">
+          <button id="detailBack" class="detail-back" type="button" hidden>
+            <span aria-hidden="true">←</span>
+            <span id="detailBackLabel"></span>
+          </button>
           <h2 id="detailTitle"></h2>
           <div class="identity">
             <span id="detailKey"></span><span id="detailUid"></span

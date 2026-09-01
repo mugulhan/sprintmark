@@ -236,6 +236,12 @@ export const messages = {
     "work.title": "Başlık",
     "work.details": "Detay",
     "work.loading": "İş ayrıntıları yükleniyor…",
+    "reference.results": "İş referansı sonuçları",
+    "reference.noResults": "Eşleşen iş bulunamadı.",
+    "reference.openNamed": "{key} — {title} işini aç",
+    "reference.unavailableNamed": "{key} işi kullanılamıyor",
+    "reference.unavailable": "İş bulunamadı veya bu işe erişiminiz yok.",
+    "reference.backTo": "{key} işine dön",
     "work.create": "Kaydı oluştur",
     "work.newEvidenceHelp":
       "Kanıt dosyalarını seçin, buraya bırakın veya görsel yapıştırın.",
@@ -564,6 +570,13 @@ export const messages = {
     "work.title": "Title",
     "work.details": "Details",
     "work.loading": "Loading work item details…",
+    "reference.results": "Work item reference results",
+    "reference.noResults": "No matching work items.",
+    "reference.openNamed": "Open {key} — {title}",
+    "reference.unavailableNamed": "{key} is unavailable",
+    "reference.unavailable":
+      "The work item was not found or you do not have access.",
+    "reference.backTo": "Back to {key}",
     "work.create": "Create item",
     "work.newEvidenceHelp":
       "Choose evidence files, drop them here or paste an image.",
