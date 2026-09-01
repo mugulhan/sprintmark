@@ -322,10 +322,30 @@
               ><span data-i18n="work.reviewer">İnceleyici</span
               ><select id="editReviewer"></select
             ></label>
-            <label
-              ><span data-i18n="work.followers">Takipçiler</span
-              ><select id="editFollowers" multiple size="3"></select
-            ></label>
+            <div class="follower-field">
+              <span data-i18n="work.followers">Takipçiler</span>
+              <div class="follower-summary">
+                <button id="toggleFollowing" type="button"></button>
+                <span id="followerAvatars" class="avatar-stack"></span>
+                <button
+                  id="manageFollowers"
+                  type="button"
+                  aria-expanded="false"
+                  data-i18n="work.manageFollowers"
+                >
+                  Yönet
+                </button>
+              </div>
+              <div id="followerPanel" class="follower-panel" hidden>
+                <input
+                  id="followerSearch"
+                  type="search"
+                  data-i18n-placeholder="work.searchFollowers"
+                  placeholder="Takipçilerde ara…"
+                />
+                <div id="followerOptions" class="follower-options"></div>
+              </div>
+            </div>
             <label
               ><span data-i18n="work.priority">Öncelik</span
               ><select id="editPriority">
@@ -357,6 +377,31 @@
                 />
               </span>
             </label>
+            <label
+              ><span data-i18n="work.estimate">Tahmini efor</span
+              ><span class="estimate-control">
+                <select id="editEstimate">
+                  <option value="" data-i18n="work.estimateNone">
+                    Belirlenmedi
+                  </option>
+                  <option value="30">30 dk</option>
+                  <option value="60">1 sa</option>
+                  <option value="120">2 sa</option>
+                  <option value="240">4 sa</option>
+                  <option value="480" data-i18n="work.oneDay">1 gün</option>
+                  <option value="960" data-i18n="work.twoDays">2 gün</option>
+                  <option value="custom" data-i18n="work.estimateCustom">
+                    Özel
+                  </option>
+                </select>
+                <input
+                  id="editEstimateCustom"
+                  inputmode="text"
+                  placeholder="Örn. 90dk, 3sa, 2g"
+                  data-i18n-placeholder="work.estimatePlaceholder"
+                  hidden
+                /> </span
+            ></label>
             <button
               id="saveMetadata"
               type="submit"
@@ -408,13 +453,16 @@
               <span id="activityCount" class="activity-count"></span>
             </div>
             <form id="activityForm" class="activity-composer">
-              <span
-                id="activityEditorLabel"
-                class="activity-composer-label"
-                data-i18n="activity.addNote"
-              >
-                Not ekle
-              </span>
+              <div class="activity-composer-identity">
+                <span id="activityActor" class="composer-identity"></span>
+                <span
+                  id="activityEditorLabel"
+                  class="activity-composer-label"
+                  data-i18n="activity.addNote"
+                >
+                  Not ekle
+                </span>
+              </div>
               <div
                 id="activityEditor"
                 class="rich-editor activity-editor"
@@ -532,30 +580,39 @@
       </form>
     </dialog>
 
-    <dialog id="projectDialog" class="create-dialog">
+    <dialog id="projectDialog" class="create-dialog project-create-dialog">
       <form id="projectForm">
         <div class="dialog-head">
           <h2 data-i18n="project.newTitle">Yeni proje oluştur</h2>
           <button type="button" class="close">×</button>
         </div>
-        <label
-          ><span data-i18n="project.name">Proje adı</span
-          ><input name="name" required maxlength="120"
-        /></label>
-        <label
-          ><span data-i18n="project.code">Kısa kod</span
-          ><input
-            name="code"
-            required
-            minlength="2"
-            maxlength="8"
-            pattern="[A-Za-z][A-Za-z0-9]{1,7}"
-            placeholder="Örn. ASG"
-            data-i18n-placeholder="project.codeExample"
-          /><small data-i18n="project.codeHelp"
-            >İş ve sprint anahtarlarında kullanılır; sonradan değişmez.</small
-          ></label
-        >
+        <div class="create-dialog-body project-create-body">
+          <label class="create-field"
+            ><span data-i18n="project.name">Proje adı</span
+            ><input name="name" required maxlength="120"
+          /></label>
+          <label class="create-field"
+            ><span data-i18n="project.code">Kısa kod</span
+            ><input
+              name="code"
+              required
+              minlength="2"
+              maxlength="8"
+              pattern="[A-Za-z][A-Za-z0-9]{1,7}"
+              placeholder="Örn. ASG"
+              data-i18n-placeholder="project.codeExample"
+            /><small data-i18n="project.codeHelp"
+              >İş ve sprint anahtarlarında kullanılır; sonradan değişmez.</small
+            ></label
+          >
+          <label class="create-field"
+            ><span data-i18n="project.description">Açıklama</span
+            ><textarea name="description" rows="4" maxlength="10000"></textarea>
+          </label>
+          <p class="server-time-note" data-i18n="project.serverTimeNote">
+            Oluşturulma zamanı sunucu tarafından otomatik kaydedilir.
+          </p>
+        </div>
         <div class="form-actions">
           <button type="button" class="close" data-i18n="work.cancel">
             Vazgeç
@@ -673,6 +730,31 @@
               </select></label
             >
           </div>
+          <label class="create-field"
+            ><span data-i18n="work.estimate">Tahmini efor</span
+            ><span class="estimate-control">
+              <select id="createEstimate">
+                <option value="" data-i18n="work.estimateNone">
+                  Belirlenmedi
+                </option>
+                <option value="30">30 dk</option>
+                <option value="60">1 sa</option>
+                <option value="120">2 sa</option>
+                <option value="240">4 sa</option>
+                <option value="480" data-i18n="work.oneDay">1 gün</option>
+                <option value="960" data-i18n="work.twoDays">2 gün</option>
+                <option value="custom" data-i18n="work.estimateCustom">
+                  Özel
+                </option>
+              </select>
+              <input
+                id="createEstimateCustom"
+                inputmode="text"
+                placeholder="Örn. 90dk, 3sa, 2g"
+                data-i18n-placeholder="work.estimatePlaceholder"
+                hidden
+              /> </span
+          ></label>
           <label class="create-field planned-at"
             ><span data-i18n="work.scheduledAt">Planlanan zaman</span>
             <span class="schedule-control">
