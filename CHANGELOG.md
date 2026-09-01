@@ -21,6 +21,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Work-item loading now reserves the final two-column layout with an accessible skeleton, preventing the detail view from jumping when content arrives.
+- Rich editor toolbar hover and keyboard-focus states now preserve their icons and use a readable branded highlight.
 - Rich editor heading menus now dismiss when editing resumes or Escape is pressed, preventing popups from blocking text input.
 - The protected calendar/project shell now stays hidden until session or setup state is resolved, eliminating the signed-out refresh flash and overlay effect.
 - Local developer sign-out now revokes a real server-side session and remains signed out after refresh.

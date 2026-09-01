@@ -211,9 +211,54 @@
           ×
         </button>
       </div>
-      <div id="detailLoading" class="detail-loading" role="status" hidden>
-        <span class="detail-loading-spinner" aria-hidden="true"></span>
-        <span data-i18n="work.loading">İş ayrıntıları yükleniyor…</span>
+      <div
+        id="detailLoading"
+        class="detail-loading"
+        role="status"
+        aria-live="polite"
+        hidden
+      >
+        <span
+          id="detailLoadingMessage"
+          class="detail-loading-message visually-hidden"
+          data-i18n="work.loading"
+          >İş ayrıntıları yükleniyor…</span
+        >
+        <aside class="detail-skeleton-sidebar" aria-hidden="true">
+          <span class="skeleton-block skeleton-button"></span>
+          <span class="skeleton-block skeleton-button"></span>
+          <span class="skeleton-block skeleton-button"></span>
+          <span class="skeleton-block skeleton-rule"></span>
+          <span class="skeleton-block skeleton-label"></span>
+          <span class="skeleton-block skeleton-line skeleton-line-short"></span>
+          <span class="skeleton-block skeleton-line"></span>
+          <span
+            class="skeleton-block skeleton-line skeleton-line-medium"
+          ></span>
+        </aside>
+        <section class="detail-skeleton-content" aria-hidden="true">
+          <div class="detail-skeleton-metadata">
+            <span class="skeleton-block skeleton-field"></span>
+            <span class="skeleton-block skeleton-field"></span>
+            <span class="skeleton-block skeleton-field"></span>
+            <span class="skeleton-block skeleton-field"></span>
+          </div>
+          <div class="detail-skeleton-document">
+            <span class="skeleton-block skeleton-heading"></span>
+            <span class="skeleton-block skeleton-line"></span>
+            <span class="skeleton-block skeleton-line"></span>
+            <span
+              class="skeleton-block skeleton-line skeleton-line-medium"
+            ></span>
+            <span
+              class="skeleton-block skeleton-heading skeleton-heading-small"
+            ></span>
+            <span class="skeleton-block skeleton-line"></span>
+            <span
+              class="skeleton-block skeleton-line skeleton-line-short"
+            ></span>
+          </div>
+        </section>
       </div>
       <div id="detailGrid" class="detail-grid">
         <aside class="actions">

@@ -141,7 +141,7 @@ button {
   cursor: pointer;
 }
 button:hover {
-  background: #edf5fb;
+  background-color: #edf5fb;
 }
 .nav.active,
 .primary {
@@ -1184,31 +1184,125 @@ dialog::backdrop {
 .detail-grid {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  min-height: 500px;
+  min-height: max(500px, calc(88vh - 92px));
+}
+.detail-grid[hidden] {
+  display: none;
 }
 .detail-loading {
-  display: flex;
-  min-height: 320px;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: max(500px, calc(88vh - 92px));
   color: var(--muted);
   font-weight: 700;
 }
 .detail-loading[hidden] {
   display: none;
 }
-.detail-loading-spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid #d7e3ee;
-  border-top-color: var(--blue);
-  border-radius: 50%;
-  animation: detail-loading-spin 700ms linear infinite;
+.detail-skeleton-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border-right: 1px solid var(--line);
+  background: #f8fafc;
 }
-@keyframes detail-loading-spin {
+.detail-skeleton-content {
+  min-width: 0;
+  padding: 18px 25px 28px;
+  background: #fff;
+}
+.detail-skeleton-metadata {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d7e3ee;
+  border-radius: 10px;
+  background: #f4f8fb;
+}
+.detail-skeleton-document {
+  display: grid;
+  gap: 12px;
+  padding-top: 28px;
+}
+.skeleton-block {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #e7eef5;
+}
+.skeleton-block::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    #ffffffb3 48%,
+    transparent 76%
+  );
+  content: "";
+  transform: translateX(-100%);
+  animation: detail-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+.skeleton-button {
+  height: 40px;
+}
+.skeleton-rule {
+  height: 1px;
+  margin: 8px 0;
+  border-radius: 0;
+}
+.skeleton-label {
+  width: 42%;
+  height: 13px;
+}
+.skeleton-line {
+  width: 100%;
+  height: 12px;
+}
+.skeleton-line-medium {
+  width: 74%;
+}
+.skeleton-line-short {
+  width: 55%;
+}
+.skeleton-field {
+  height: 58px;
+}
+.skeleton-heading {
+  width: 46%;
+  height: 25px;
+  margin-bottom: 3px;
+}
+.skeleton-heading-small {
+  width: 32%;
+  height: 21px;
+  margin-top: 18px;
+}
+.detail-loading.is-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+}
+.detail-loading.is-error .detail-skeleton-sidebar,
+.detail-loading.is-error .detail-skeleton-content {
+  display: none;
+}
+.detail-loading.is-error .detail-loading-message {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: normal !important;
+}
+@keyframes detail-skeleton-shimmer {
   to {
-    transform: rotate(1turn);
+    transform: translateX(100%);
   }
 }
 .actions {
@@ -1645,6 +1739,16 @@ dd {
 .toastui-editor-defaultUI,
 .toastui-editor-contents {
   font-family: inherit;
+}
+.rich-editor .toastui-editor-defaultUI-toolbar button:not(:disabled):hover {
+  border-color: #b8cee5;
+  background-color: #e8f2fb;
+}
+.rich-editor .toastui-editor-defaultUI-toolbar button:focus-visible {
+  border-color: #68a8df;
+  background-color: #e8f2fb;
+  outline: 2px solid #68a8df;
+  outline-offset: 1px;
 }
 .toastui-editor-contents {
   font-size: 14px;
@@ -2303,6 +2407,15 @@ body[data-view="projects"] #plannerStatus {
   .detail-grid {
     grid-template-columns: 1fr;
   }
+  .detail-loading {
+    grid-template-columns: 1fr;
+  }
+  .detail-skeleton-sidebar {
+    display: none;
+  }
+  .detail-skeleton-metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   #createDialog {
     width: 100%;
     max-width: none;
@@ -2475,8 +2588,8 @@ body[data-view="projects"] #plannerStatus {
   .motion-dialog[open] {
     transform: none;
   }
-  .detail-loading-spinner {
-    animation-duration: 1.4s;
+  .skeleton-block::after {
+    animation: none;
   }
   @starting-style {
     .motion-dialog[open] {
