@@ -56,7 +56,7 @@ test("rich editors expose searchable work item references", async () => {
     readFile(resolve(publicRoot, "app.js"), "utf8"),
     readFile(resolve(publicRoot, "styles.css"), "utf8"),
   ]);
-  assert.match(html, /id="detailBack"/);
+  assert.doesNotMatch(html, /id="detailBack"/);
   assert.match(app, /attachWorkItemReferencePicker/);
   assert.match(app, /matchWorkItemCommand/);
   assert.match(app, /editor\.exec\("addLink"/);
@@ -64,6 +64,7 @@ test("rich editors expose searchable work item references", async () => {
   assert.match(app, /decorateWorkItemReferences\(element\)/);
   assert.match(app, /state\.itemTrail/);
   assert.match(app, /window\.onpopstate = async/);
+  assert.match(app, /await applyLocationRoute\(\);/);
   assert.match(styles, /\.work-reference-picker/);
   assert.match(styles, /\.work-item-reference/);
   assert.match(styles, /\.work-reference-preview/);

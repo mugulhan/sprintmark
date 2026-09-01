@@ -6,6 +6,7 @@ import {
   workItemKeyFromHref,
   workItemReferenceHref,
 } from "./work-item-references.js";
+import { formatEffort, formatElapsed, parseEffort } from "./durations.js";
 
 const initialView = location.pathname.startsWith("/projects")
   ? "projects"
@@ -17,6 +18,7 @@ const state = {
   authMode: null,
   setup: null,
   users: [],
+  collaboratorsByProject: {},
   teams: [],
   notifications: [],
   notificationEtag: null,
@@ -56,6 +58,13 @@ const state = {
   returnPath: "/",
   itemTrail: [],
   suppressDetailHistory: false,
+  editFollowerIds: new Set(),
+  projectInsights: null,
+  insightProjectKey: null,
+  insightFilter: "all",
+  insightSort: "updated",
+  insightPage: 1,
+  insightsExpanded: false,
   referencePreviewTimer: null,
 };
 const $ = (id) => document.getElementById(id);
@@ -347,6 +356,42 @@ const relativeElapsed = (value) => {
     numeric: "auto",
   }).format(-Math.round(elapsedSeconds / seconds), unit);
 };
+const language = () => document.documentElement.lang || "en";
+const initials = (name) =>
+  String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase(language()) || "")
+    .join("");
+function avatar(user, size = "small") {
+  const name = user?.display_name || t("activity.actorUser");
+  const content = user?.avatar_url
+    ? `<img src="${escapeHtml(user.avatar_url)}" alt="" loading="lazy">`
+    : `<span aria-hidden="true">${escapeHtml(initials(name))}</span>`;
+  return `<span class="user-avatar avatar-${size}" title="${escapeHtml(name)}">${content}</span>`;
+}
+function projectCollaborators(projectKey = state.selectedProject) {
+  return (
+    state.collaboratorsByProject[projectKey] ||
+    [state.session?.user, ...state.users].filter(
+      (user, index, items) =>
+        user &&
+        items.findIndex((candidate) => candidate?.id === user.id) === index,
+    )
+  );
+}
+function userById(id, projectKey = state.selectedProject) {
+  return (
+    projectCollaborators(projectKey).find((user) => user.id === id) || null
+  );
+}
+function durationFromItem(item) {
+  if (!item?.started_at) return null;
+  const end = item.completed_at ? Date.parse(item.completed_at) : Date.now();
+  const start = Date.parse(item.started_at);
+  return end >= start ? Math.round((end - start) / 60000) : null;
+}
 const workItemStatuses = (item) => [
   ...new Set([
     item.status,
@@ -397,18 +442,6 @@ function returnPathContext() {
     };
   }
   return null;
-}
-function renderDetailBack() {
-  const key = state.itemTrail.at(-1);
-  const button = $("detailBack");
-  button.hidden = !key;
-  if (!key) {
-    $("detailBackLabel").textContent = "";
-    return;
-  }
-  $("detailBackLabel").textContent = key;
-  button.setAttribute("aria-label", t("reference.backTo", { key }));
-  button.title = t("reference.backTo", { key });
 }
 function breadcrumbItems() {
   const project = currentProject();
@@ -1058,9 +1091,74 @@ function renderProjectList() {
       const backlogCount = items.filter(
         (item) => item.kind === "backlog",
       ).length;
-      return `<button class="project-list-card${!state.projectIndex && project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${t(project.status === "active" ? "project.status.active" : "project.status.archived")}</span><small>${tp("count.task", taskCount)} · ${tp("count.backlog", backlogCount)}</small></button>`;
+      const chronology = project.created_at
+        ? `<time datetime="${escapeHtml(project.created_at)}" title="${escapeHtml(localDateTime(project.created_at))}">${escapeHtml(projectDurationLabel(project))}</time>`
+        : `<span>${t("project.dateUnknown")}</span>`;
+      return `<button class="project-list-card${!state.projectIndex && project.key === state.selectedProject ? " active" : ""}" data-project-key="${project.key}"><span><strong>${escapeHtml(project.name)}</strong><small>${project.key} · ${project.code}</small></span><span class="project-status ${project.status}">${t(project.status === "active" ? "project.status.active" : "project.status.archived")}</span><small>${tp("count.task", taskCount)} · ${tp("count.backlog", backlogCount)}</small><small class="project-age">${chronology}</small></button>`;
     })
     .join("");
+}
+function projectDurationLabel(project) {
+  if (!project.created_at) return t("project.dateUnknown");
+  const end = project.archived_at
+    ? Date.parse(project.archived_at)
+    : Date.now();
+  const minutes = Math.max(
+    0,
+    Math.round((end - Date.parse(project.created_at)) / 60000),
+  );
+  return t(
+    project.status === "archived" ? "project.lastedFor" : "project.activeFor",
+    { duration: formatElapsed(minutes, language()) },
+  );
+}
+
+function renderDeliveryInsights() {
+  if (
+    !state.projectInsights ||
+    state.insightProjectKey !== state.selectedProject
+  )
+    return `<section class="dashboard-section delivery-insights is-loading"><div class="section-head"><div><h3>${t("insights.title")}</h3><p>${t("insights.loading")}</p></div></div></section>`;
+  if (state.projectInsights.error)
+    return `<section class="dashboard-section delivery-insights"><div class="section-head"><div><h3>${t("insights.title")}</h3><p>${t("insights.error")}</p></div></div></section>`;
+  const { summary, items, pagination } = state.projectInsights;
+  const estimatedPercent = summary.total
+    ? Math.round((summary.estimated_count / summary.total) * 100)
+    : 0;
+  const totalEstimate = summary.total_estimate_minutes || 0;
+  const statusBars = Object.entries(summary.status_estimate_minutes || {})
+    .sort(([left], [right]) =>
+      statusName(left).localeCompare(statusName(right)),
+    )
+    .map(
+      ([status, minutes]) =>
+        `<span class="delivery-status ${escapeHtml(status)}" style="--share:${totalEstimate ? (minutes / totalEstimate) * 100 : 0}%" title="${escapeHtml(`${statusName(status)} · ${formatEffort(minutes, language())}`)}"><i></i><small>${escapeHtml(statusName(status))}</small></span>`,
+    )
+    .join("");
+  const maximum = Math.max(
+    1,
+    ...items.flatMap((item) => [
+      item.estimate_minutes || 0,
+      item.cycle_minutes || 0,
+    ]),
+  );
+  const rows = items
+    .map((item) => {
+      const estimate = item.estimate_minutes;
+      const actual = item.cycle_minutes;
+      return `<tr><td><button class="insight-item-link" data-key="${escapeHtml(item.key)}"><strong>${escapeHtml(item.key)}</strong><span>${escapeHtml(item.title)}</span></button></td><td>${escapeHtml(statusName(item.status))}</td><td><span class="duration-value">${escapeHtml(formatEffort(estimate, language()))}</span><span class="duration-bar estimate" style="--duration:${estimate ? (estimate / maximum) * 100 : 0}%"><i></i></span></td><td><span class="duration-value">${escapeHtml(formatElapsed(actual, language()))}</span><span class="duration-bar actual" style="--duration:${actual !== null ? (actual / maximum) * 100 : 0}%"><i></i></span></td></tr>`;
+    })
+    .join("");
+  const table = state.insightsExpanded
+    ? `<div class="insight-controls"><label>${t("insights.filter")}<select data-insight-filter><option value="all">${t("insights.all")}</option><option value="open">${t("insights.open")}</option><option value="done">${t("insights.done")}</option><option value="unestimated">${t("insights.unestimated")}</option></select></label><label>${t("insights.sort")}<select data-insight-sort><option value="updated">${t("insights.sortUpdated")}</option><option value="estimate">${t("insights.sortEstimate")}</option><option value="actual">${t("insights.sortActual")}</option><option value="status">${t("insights.sortStatus")}</option></select></label></div><div class="insight-table-wrap"><table class="insight-table"><thead><tr><th>${t("insights.item")}</th><th>${t("work.status")}</th><th>${t("insights.estimate")}</th><th>${t("insights.actual")}</th></tr></thead><tbody>${rows || `<tr><td colspan="4">${t("insights.empty")}</td></tr>`}</tbody></table></div><div class="insight-pagination"><button data-insight-page="${pagination.page - 1}" ${pagination.page <= 1 ? "disabled" : ""}>←</button><span>${t("insights.page", { page: pagination.page, pages: pagination.page_count })}</span><button data-insight-page="${pagination.page + 1}" ${pagination.page >= pagination.page_count ? "disabled" : ""}>→</button></div>`
+    : "";
+  window.requestAnimationFrame(() => {
+    const filter = document.querySelector("[data-insight-filter]");
+    const sort = document.querySelector("[data-insight-sort]");
+    if (filter) filter.value = state.insightFilter;
+    if (sort) sort.value = state.insightSort;
+  });
+  return `<section class="dashboard-section delivery-insights"><div class="section-head"><div><h3>${t("insights.title")}</h3><p>${t("insights.subtitle")}</p></div><button data-insights-toggle aria-expanded="${state.insightsExpanded}">${t(state.insightsExpanded ? "insights.collapse" : "insights.expand")}</button></div><div class="delivery-kpis"><article><span>${t("insights.coverage")}</span><strong>%${estimatedPercent}</strong><small>${summary.estimated_count}/${summary.total}</small></article><article><span>${t("insights.totalEffort")}</span><strong>${escapeHtml(formatEffort(summary.total_estimate_minutes, language()))}</strong><small>${t("insights.estimatedOnly")}</small></article><article><span>${t("insights.remainingEffort")}</span><strong>${escapeHtml(formatEffort(summary.remaining_estimate_minutes, language()))}</strong><small>${t("insights.openWork")}</small></article><article><span>${t("insights.medianCycle")}</span><strong>${escapeHtml(formatElapsed(summary.median_cycle_minutes, language()))}</strong><small>${t("insights.measured", { count: summary.measured_completed_count })}</small></article></div><div class="delivery-distribution" aria-label="${escapeHtml(t("insights.distribution"))}">${statusBars || `<span>${t("insights.noEstimates")}</span>`}</div>${table}</section>`;
 }
 function canPreviewDocument(document) {
   const type = String(document.type || "");
@@ -1100,6 +1198,50 @@ async function loadProjectDocuments() {
   if (!response.ok)
     throw new Error((await response.json()).error || t("error.documentsLoad"));
   state.projectDocuments = (await response.json()).items;
+}
+
+async function loadProjectCollaborators(projectKey = state.selectedProject) {
+  if (!projectKey) return [];
+  const response = await apiFetch(
+    `/api/v1/projects/${encodeURIComponent(projectKey)}/collaborators`,
+  );
+  if (!response.ok) return projectCollaborators(projectKey);
+  const result = await response.json();
+  state.collaboratorsByProject[projectKey] = result.items || [];
+  return state.collaboratorsByProject[projectKey];
+}
+
+async function loadProjectInsights({ renderAfter = true } = {}) {
+  const project = currentProject();
+  if (!project) return;
+  const projectKey = project.key;
+  const query = new window.URLSearchParams({
+    filter: state.insightFilter,
+    sort: state.insightSort,
+    page: String(state.insightPage),
+    page_size: "20",
+  });
+  state.insightProjectKey = projectKey;
+  const response = await apiFetch(
+    `/api/v1/projects/${projectKey}/insights?${query}`,
+  );
+  if (!response.ok) {
+    state.projectInsights = { error: true };
+  } else if (state.insightProjectKey === projectKey) {
+    state.projectInsights = await response.json();
+  }
+  if (
+    renderAfter &&
+    state.view === "projects" &&
+    currentProject()?.key === projectKey
+  )
+    renderProjectDashboard();
+}
+
+function invalidateProjectInsights() {
+  state.projectInsights = null;
+  state.insightProjectKey = state.selectedProject;
+  void loadProjectInsights();
 }
 
 async function setProjectSection(section, updateAddress = true) {
@@ -1352,7 +1494,7 @@ function renderProjectDashboard() {
         })
         .join("")}</div></section>`
     : "";
-  const overview = `<section class="project-metrics"><article><span>${t("dashboard.completed")}</span><strong>%${progress}</strong><small>${tp("dashboard.completedCaption", tasks.length, { done, total: tasks.length })}</small></article><article><span>${t("dashboard.open")}</span><strong>${open}</strong><small>${t("dashboard.openCaption")}</small></article><article><span>${t("dashboard.backlog")}</span><strong>${backlog}</strong><small>${t("dashboard.backlogCaption")}</small></article><article><span>${t("dashboard.unscheduled")}</span><strong>${undated}</strong><small>${t("dashboard.unscheduledCaption")}</small></article></section>${sprintSection}<section class="dashboard-section"><div class="section-head"><div><h3>${t("dashboard.recent")}</h3><p>${t("dashboard.recentCaption")}</p></div></div><div class="recent-items">${recent
+  const overview = `<section class="project-metrics"><article><span>${t("dashboard.completed")}</span><strong>%${progress}</strong><small>${tp("dashboard.completedCaption", tasks.length, { done, total: tasks.length })}</small></article><article><span>${t("dashboard.open")}</span><strong>${open}</strong><small>${t("dashboard.openCaption")}</small></article><article><span>${t("dashboard.backlog")}</span><strong>${backlog}</strong><small>${t("dashboard.backlogCaption")}</small></article><article><span>${t("dashboard.unscheduled")}</span><strong>${undated}</strong><small>${t("dashboard.unscheduledCaption")}</small></article></section>${renderDeliveryInsights()}${sprintSection}<section class="dashboard-section"><div class="section-head"><div><h3>${t("dashboard.recent")}</h3><p>${t("dashboard.recentCaption")}</p></div></div><div class="recent-items">${recent
     .map(
       (item) =>
         `<button data-key="${item.key}"><span><strong>${item.key}</strong>${escapeHtml(item.title)}</span><small>${item.completed_at ? `✓ ${escapeHtml(relativeElapsed(item.completed_at))} · ` : ""}${item.updated_at.slice(0, 10)} · ${statusName(item.status)}</small></button>`,
@@ -1365,7 +1507,7 @@ function renderProjectDashboard() {
         ? renderProjectPeople(project)
         : overview;
   $("projectDashboard").innerHTML =
-    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p></div><div class="project-actions"><button data-project-action="calendar">${t("project.goCalendar")}</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>${t("project.createItem")}</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>${t("sprint.create")}</button><button data-project-action="edit">${t("project.edit")}</button></div></section><nav class="project-tabs" aria-label="${t("project.sectionsLabel")}"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">${t("breadcrumb.overview")}</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">${t("breadcrumb.documents")} <span>${project.documents?.length || 0}</span></button><button data-project-tab="people" class="${state.projectSection === "people" ? "active" : ""}" aria-selected="${state.projectSection === "people"}">${t("breadcrumb.people")}</button></nav>${sectionContent}`;
+    `<section class="project-hero"><div><span class="eyebrow">${project.key} · ${project.code}</span><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.description || "")}</p>${project.created_at ? `<p class="project-chronology"><time datetime="${escapeHtml(project.created_at)}">${escapeHtml(localDateTime(project.created_at))}</time><span>${escapeHtml(projectDurationLabel(project))}</span></p>` : `<p class="project-chronology">${t("project.dateUnknown")}</p>`}</div><div class="project-actions"><button data-project-action="calendar">${t("project.goCalendar")}</button><button data-project-action="new-item" ${project.status === "archived" ? "disabled" : ""}>${t("project.createItem")}</button><button data-project-action="sprint" ${project.status === "archived" ? "disabled" : ""}>${t("sprint.create")}</button><button data-project-action="edit">${t("project.edit")}</button></div></section><nav class="project-tabs" aria-label="${t("project.sectionsLabel")}"><button data-project-tab="overview" class="${state.projectSection === "overview" ? "active" : ""}" aria-selected="${state.projectSection === "overview"}">${t("breadcrumb.overview")}</button><button data-project-tab="documents" class="${state.projectSection === "documents" ? "active" : ""}" aria-selected="${state.projectSection === "documents"}">${t("breadcrumb.documents")} <span>${project.documents?.length || 0}</span></button><button data-project-tab="people" class="${state.projectSection === "people" ? "active" : ""}" aria-selected="${state.projectSection === "people"}">${t("breadcrumb.people")}</button></nav>${sectionContent}`;
 }
 function renderProjects() {
   renderProjectList();
@@ -1419,6 +1561,55 @@ function setView(view, updateAddress = true) {
   }
   render();
 }
+
+async function applyLocationRoute() {
+  const path = location.pathname;
+  const projectRoute = path.match(/^\/projects\/(PRJ-\d{3})/i);
+  const requestedKey =
+    projectRoute?.[1]?.toUpperCase() ||
+    new window.URLSearchParams(location.search).get("project")?.toUpperCase();
+  const project = state.projects.find(
+    (candidate) => candidate.key === requestedKey,
+  );
+  const projectChanged = Boolean(
+    project && project.key !== state.selectedProject,
+  );
+  if (project) {
+    state.selectedProject = project.key;
+    window.localStorage.setItem("work-tracker-project", project.key);
+  }
+  state.view = path.startsWith("/projects")
+    ? "projects"
+    : path.startsWith("/backlog")
+      ? "backlog"
+      : "calendar";
+  state.projectIndex =
+    state.view === "projects" &&
+    (path === "/projects" || path === "/projects/");
+  const requestedSection = new window.URLSearchParams(location.search).get(
+    "tab",
+  );
+  state.projectSection =
+    state.view === "projects" &&
+    ["documents", "people"].includes(requestedSection)
+      ? requestedSection
+      : "overview";
+  if (projectChanged) {
+    state.projectInsights = null;
+    state.insightProjectKey = state.selectedProject;
+    state.insightPage = 1;
+    await Promise.all([
+      loadProjectCollaborators(state.selectedProject),
+      loadProjectInsights({ renderAfter: false }),
+    ]);
+  }
+  if (state.projectSection === "documents") await loadProjectDocuments();
+  if (state.projectSection === "people" && currentProject()) {
+    const response = await apiFetch(`/api/v1/projects/${currentProject().key}`);
+    if (response.ok) updateProjectInState(await response.json());
+  }
+  render();
+}
 function activityFieldName(field) {
   return (
     {
@@ -1428,6 +1619,7 @@ function activityFieldName(field) {
       scheduled_for: t("activity.field.scheduledDate"),
       scheduled_time: t("activity.field.scheduledTime"),
       priority: t("activity.field.priority"),
+      estimate_minutes: t("activity.field.estimate"),
       page_url: t("activity.field.pageUrl"),
       body: t("activity.field.description"),
       project_key: t("activity.field.project"),
@@ -1440,6 +1632,8 @@ function activityValue(field, value) {
   if (field === "status") return statusName(value);
   if (field === "team") return teamName(value);
   if (field === "priority") return priorityName(value);
+  if (field === "estimate_minutes")
+    return formatEffort(Number(value), language());
   return String(value);
 }
 function activityDescription(activity) {
@@ -1484,13 +1678,13 @@ function renderActivity(item) {
     ? activities
         .map(
           (activity) =>
-            `<li class="activity-entry activity-${escapeHtml(activity.type)}"><span class="activity-marker" aria-hidden="true"></span><div class="activity-entry-content"><header><strong>${escapeHtml(
+            `<li class="activity-entry activity-${escapeHtml(activity.type)}"><span class="activity-marker" aria-hidden="true"></span><div class="activity-entry-content"><header><span class="activity-actor">${avatar(typeof activity.actor === "object" ? activity.actor : null)}<strong>${escapeHtml(
               typeof activity.actor === "object"
                 ? activity.actor.display_name
                 : activity.actor === "user"
                   ? t("activity.actorUser")
                   : t("activity.actorSystem"),
-            )}</strong><time datetime="${escapeHtml(activity.created_at)}">${escapeHtml(localDateTime(activity.created_at))} · ${escapeHtml(relativeElapsed(activity.created_at))}</time></header><div>${activityDescription(activity)}</div></div></li>`,
+            )}</strong></span><time datetime="${escapeHtml(activity.created_at)}">${escapeHtml(localDateTime(activity.created_at))} · ${escapeHtml(relativeElapsed(activity.created_at))}</time></header><div>${activityDescription(activity)}</div></div></li>`,
         )
         .join("")
     : `<li class="activity-empty">${t("activity.empty")}</li>`;
@@ -1520,6 +1714,9 @@ function resetActivityEditor() {
   state.activityEditor?.destroy();
   state.activityEditor = null;
   $("activityEditor").innerHTML = "";
+  const actor = state.session?.user;
+  $("activityActor").innerHTML =
+    `${avatar(actor)}<strong>${escapeHtml(actor?.display_name || t("activity.actorUser"))}</strong>`;
   state.activityEditor = makeEditor(
     $("activityEditor"),
     "",
@@ -1530,8 +1727,78 @@ function resetActivityEditor() {
     t("activity.placeholder"),
   );
 }
+function setEstimateControls(select, custom, value) {
+  const presets = new Set([30, 60, 120, 240, 480, 960]);
+  if (value === null || value === undefined) {
+    select.value = "";
+    custom.value = "";
+    custom.hidden = true;
+  } else if (presets.has(Number(value))) {
+    select.value = String(value);
+    custom.value = "";
+    custom.hidden = true;
+  } else {
+    select.value = "custom";
+    custom.value = formatEffort(Number(value), language()).replace(/\s/g, "");
+    custom.hidden = false;
+  }
+}
+function estimateFromControls(select, custom) {
+  const parsed = parseEffort(
+    select.value === "custom" ? custom.value : select.value,
+  );
+  if (
+    Number.isNaN(parsed) ||
+    (parsed !== null &&
+      (!Number.isInteger(parsed) || parsed < 1 || parsed > 525600))
+  )
+    throw new Error(t("validation.estimate"));
+  return parsed;
+}
+function updateEstimateCustom(select, custom) {
+  custom.hidden = select.value !== "custom";
+  if (!custom.hidden) custom.focus();
+}
+function renderFollowerControls(item) {
+  state.editFollowerIds = new Set(item.follower_ids || []);
+  refreshFollowerControls();
+}
+function refreshFollowerControls() {
+  const item = state.selected;
+  if (!item) return;
+  const users = projectCollaborators(item.project_key);
+  const currentUserId = state.session?.user?.id;
+  const following = state.editFollowerIds.has(currentUserId);
+  $("toggleFollowing").textContent = t(
+    following ? "work.unfollow" : "work.follow",
+  );
+  $("toggleFollowing").classList.toggle("active", following);
+  const followers = users.filter((user) => state.editFollowerIds.has(user.id));
+  $("followerAvatars").innerHTML = `${followers
+    .slice(0, 4)
+    .map((user) => avatar(user))
+    .join(
+      "",
+    )}${followers.length > 4 ? `<span class="avatar-overflow">+${followers.length - 4}</span>` : ""}`;
+  renderFollowerOptions();
+}
+function renderFollowerOptions(query = "") {
+  const item = state.selected;
+  if (!item) return;
+  const normalized = query.trim().toLocaleLowerCase(language());
+  $("followerOptions").innerHTML = projectCollaborators(item.project_key)
+    .filter((user) =>
+      String(user.display_name)
+        .toLocaleLowerCase(language())
+        .includes(normalized),
+    )
+    .map(
+      (user) =>
+        `<label>${avatar(user)}<span>${escapeHtml(user.display_name)}</span><input type="checkbox" data-follower-id="${escapeHtml(user.id)}" ${state.editFollowerIds.has(user.id) ? "checked" : ""}></label>`,
+    )
+    .join("");
+}
 function renderWorkItemChrome(item, { deferActivity = false } = {}) {
-  renderDetailBack();
   $("detailTitle").textContent = item.title;
   $("detailKey").textContent = item.key;
   $("detailUid").textContent = `UUID ${item.uid.slice(0, 8)}`;
@@ -1552,27 +1819,25 @@ function renderWorkItemChrome(item, { deferActivity = false } = {}) {
   $("editTeam").value = item.team_id || "";
   const peopleOptions = [
     '<option value="">—</option>',
-    ...state.users.map(
+    ...projectCollaborators(item.project_key).map(
       (user) =>
         `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name)}</option>`,
     ),
   ].join("");
   $("editAssignee").innerHTML = peopleOptions;
   $("editReviewer").innerHTML = peopleOptions;
-  $("editFollowers").innerHTML = state.users
-    .map(
-      (user) =>
-        `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name)}</option>`,
-    )
-    .join("");
   $("editAssignee").value = item.assignee_id || "";
   $("editReviewer").value = item.reviewer_id || "";
-  for (const option of $("editFollowers").options)
-    option.selected = (item.follower_ids || []).includes(option.value);
+  renderFollowerControls(item);
   $("editTransitionNote").value = "";
   $("editPriority").value = item.priority || "";
   $("editDate").value = item.scheduled_for || "";
   $("editTime").value = item.scheduled_time || "";
+  setEstimateControls(
+    $("editEstimate"),
+    $("editEstimateCustom"),
+    item.estimate_minutes,
+  );
   $("toggleDone").textContent = t(
     item.status === "done"
       ? "work.reopen"
@@ -1592,18 +1857,26 @@ function renderWorkItemChrome(item, { deferActivity = false } = {}) {
   const completionFact = item.completed_at
     ? `<dt>${t("work.completedAt")}</dt><dd class="completion-time"><time datetime="${escapeHtml(item.completed_at)}">${localDateTime(item.completed_at)}</time><small>${escapeHtml(relativeElapsed(item.completed_at))}</small></dd>`
     : "";
+  const cycle = durationFromItem(item);
+  const timingFacts = `<dt>${t("work.estimate")}</dt><dd>${escapeHtml(formatEffort(item.estimate_minutes, language()))}</dd><dt>${t(item.completed_at ? "work.cycleTime" : "work.elapsedCycle")}</dt><dd>${cycle === null ? t("work.durationUnavailable") : escapeHtml(formatElapsed(cycle, language()))}</dd>`;
+  const creator = userById(item.creator_id, item.project_key);
+  const reporter = userById(item.reporter_id, item.project_key);
+  const creatorFact = `<dt>${t("work.creator")}</dt><dd class="person-fact">${avatar(creator)}<span>${escapeHtml(creator?.display_name || item.creator_id || "—")}</span></dd>`;
+  const reporterFact =
+    item.reporter_id && item.reporter_id !== item.creator_id
+      ? `<dt>${t("work.reporter")}</dt><dd class="person-fact">${avatar(reporter)}<span>${escapeHtml(reporter?.display_name || item.reporter_id)}</span></dd>`
+      : "";
   $("facts").innerHTML =
-    `<dt>${t("work.project")}</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>${t("work.calendar")}</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>${t("work.priority")}</dt><dd>${priorityName(item.priority)}</dd>${completionFact}<dt>${t("work.created")}</dt><dd>${localDateTime(item.created_at)}</dd><dt>${t("work.updated")}</dt><dd>${localDateTime(item.updated_at)}</dd><dt>${t("work.legacyId")}</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
+    `${creatorFact}${reporterFact}<dt>${t("work.project")}</dt><dd>${escapeHtml(state.projects.find((project) => project.key === item.project_key)?.name || item.project_key)}</dd><dt>${t("work.calendar")}</dt><dd>${item.scheduled_for ? `${item.scheduled_for}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}` : "—"}</dd><dt>${t("work.priority")}</dt><dd>${priorityName(item.priority)}</dd>${timingFacts}${completionFact}<dt>${t("work.created")}</dt><dd>${localDateTime(item.created_at)}</dd><dt>${t("work.updated")}</dt><dd>${localDateTime(item.updated_at)}</dd><dt>${t("work.legacyId")}</dt><dd>${item.legacy_ids.join(", ") || "—"}</dd>`;
   $("facts").insertAdjacentHTML(
     "afterbegin",
-    `<dt>${t("work.reporter")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reporter_id)?.display_name || item.reporter_id || "—")}</dd><dt>${t("work.assignee")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.assignee_id)?.display_name || "—")}</dd><dt>${t("work.reviewer")}</dt><dd>${escapeHtml(state.users.find((user) => user.id === item.reviewer_id)?.display_name || "—")}</dd>`,
+    `<dt>${t("work.assignee")}</dt><dd>${escapeHtml(userById(item.assignee_id, item.project_key)?.display_name || "—")}</dd><dt>${t("work.reviewer")}</dt><dd>${escapeHtml(userById(item.reviewer_id, item.project_key)?.display_name || "—")}</dd>`,
   );
   renderEvidence(item);
   if (!deferActivity) renderActivity(item);
   translateDocument();
 }
 function renderWorkItemLoading(item) {
-  renderDetailBack();
   $("detailTitle").textContent = item?.title || t("work.loading");
   $("detailKey").textContent = item?.key || "";
   $("detailUid").textContent = item?.uid ? `UUID ${item.uid.slice(0, 8)}` : "";
@@ -1652,6 +1925,9 @@ async function openItem(key, push = true) {
   let referencesPromise = summary?.uid
     ? apiFetch(`/api/v1/work-items/${summary.uid}/file-references`)
     : null;
+  let collaboratorsPromise = summary?.project_key
+    ? loadProjectCollaborators(summary.project_key)
+    : null;
   let response;
   try {
     response = await apiFetch(`/api/v1/work-items/${key}`);
@@ -1672,6 +1948,8 @@ async function openItem(key, push = true) {
     return;
   }
   const item = await response.json();
+  collaboratorsPromise ||= loadProjectCollaborators(item.project_key);
+  await collaboratorsPromise;
   referencesPromise ||= apiFetch(
     `/api/v1/work-items/${item.uid}/file-references`,
   );
@@ -1685,6 +1963,7 @@ async function openItem(key, push = true) {
     state.selectedProject = item.project_key;
     window.localStorage.setItem("work-tracker-project", item.project_key);
     render();
+    invalidateProjectInsights();
   }
   renderWorkItemChrome(item, { deferActivity: true });
   $("detailLoading").hidden = true;
@@ -1939,6 +2218,7 @@ async function patchSelectedWorkItem(patch) {
   state.items = state.items.map((item) =>
     item.uid === updated.uid ? updated : item,
   );
+  invalidateProjectInsights();
   render();
   await openItem(updated.key, false);
   return updated;
@@ -1959,6 +2239,7 @@ async function openCreateDialog(context = null) {
     state.createDraftId = draft.id;
     const form = $("createForm");
     form.reset();
+    setEstimateControls($("createEstimate"), $("createEstimateCustom"), null);
     $("createTeam").innerHTML = state.teams
       .map(
         (team) =>
@@ -2069,6 +2350,10 @@ async function load() {
     const detail = await apiFetch(`/api/v1/projects/${project.key}`);
     if (detail.ok) updateProjectInState(await detail.json());
   }
+  await Promise.all([
+    loadProjectCollaborators(state.selectedProject),
+    loadProjectInsights({ renderAfter: false }),
+  ]);
   renderBuildMeta();
   renderStatusOptions();
   const dates = filtered()
@@ -2116,6 +2401,20 @@ document.addEventListener("click", async (e) => {
   const projectTab = e.target.closest("[data-project-tab]");
   if (projectTab) {
     await setProjectSection(projectTab.dataset.projectTab);
+    return;
+  }
+  const insightsToggle = e.target.closest("[data-insights-toggle]");
+  if (insightsToggle) {
+    state.insightsExpanded = !state.insightsExpanded;
+    renderProjectDashboard();
+    return;
+  }
+  const insightPage = e.target.closest("[data-insight-page]");
+  if (insightPage && !insightPage.disabled) {
+    state.insightPage = Number(insightPage.dataset.insightPage);
+    state.projectInsights = null;
+    renderProjectDashboard();
+    await loadProjectInsights();
     return;
   }
   const projectDocumentUpload = e.target.closest(
@@ -2279,6 +2578,18 @@ document.addEventListener("submit", async (event) => {
   updateProjectInState(await response.json());
   renderProjectDashboard();
 });
+document.addEventListener("change", async (event) => {
+  if (event.target.matches("[data-insight-filter]")) {
+    state.insightFilter = event.target.value;
+    state.insightPage = 1;
+  } else if (event.target.matches("[data-insight-sort]")) {
+    state.insightSort = event.target.value;
+    state.insightPage = 1;
+  } else return;
+  state.projectInsights = null;
+  renderProjectDashboard();
+  await loadProjectInsights();
+});
 async function scheduleItem(uid, scheduledFor) {
   const item = state.items.find((candidate) => candidate.uid === uid);
   if (!item || item.kind !== "task" || item.scheduled_for === scheduledFor)
@@ -2379,6 +2690,9 @@ function selectProject(key, updateAddress = true) {
   state.selectedProject = key;
   state.projectSection = "overview";
   state.projectDocuments = [];
+  state.projectInsights = null;
+  state.insightProjectKey = key;
+  state.insightPage = 1;
   window.localStorage.setItem("work-tracker-project", key);
   const dates = filtered()
     .map((item) => item.scheduled_for)
@@ -2390,6 +2704,7 @@ function selectProject(key, updateAddress = true) {
     history.replaceState({}, "", viewCanonical(state.view, project));
   }
   render();
+  void Promise.all([loadProjectCollaborators(key), loadProjectInsights()]);
 }
 function openProjectEdit() {
   const project = currentProject();
@@ -2413,7 +2728,6 @@ function handleProjectAction(action) {
     return $("sprintDialog").showModal();
   if (action === "edit") openProjectEdit();
 }
-$("newProject").onclick = () => $("projectDialog").showModal();
 $("newProjectFromList").onclick = () => $("projectDialog").showModal();
 $("projectForm").onsubmit = async (event) => {
   event.preventDefault();
@@ -2534,22 +2848,34 @@ $("copyLink").onclick = async () => {
 $("editWorkItem").onclick = startWorkItemEdit;
 $("editMetadata").onsubmit = async (event) => {
   event.preventDefault();
+  let estimateMinutes;
+  try {
+    estimateMinutes = estimateFromControls(
+      $("editEstimate"),
+      $("editEstimateCustom"),
+    );
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
   const button = $("saveMetadata");
   button.disabled = true;
-  await patchSelectedWorkItem({
-    status: $("editStatus").value,
-    team_id: $("editTeam").value || null,
-    assignee_id: $("editAssignee").value || null,
-    reviewer_id: $("editReviewer").value || null,
-    follower_ids: [...$("editFollowers").selectedOptions].map(
-      (option) => option.value,
-    ),
-    priority: $("editPriority").value || null,
-    scheduled_for: $("editDate").value || null,
-    scheduled_time: $("editTime").value || null,
-    transition_note: $("editTransitionNote").value.trim(),
-  });
-  button.disabled = false;
+  try {
+    await patchSelectedWorkItem({
+      status: $("editStatus").value,
+      team_id: $("editTeam").value || null,
+      assignee_id: $("editAssignee").value || null,
+      reviewer_id: $("editReviewer").value || null,
+      follower_ids: [...state.editFollowerIds],
+      priority: $("editPriority").value || null,
+      estimate_minutes: estimateMinutes,
+      scheduled_for: $("editDate").value || null,
+      scheduled_time: $("editTime").value || null,
+      transition_note: $("editTransitionNote").value.trim(),
+    });
+  } finally {
+    button.disabled = false;
+  }
 };
 $("activityForm").onsubmit = async (event) => {
   event.preventDefault();
@@ -2640,7 +2966,17 @@ $("detail").addEventListener("close", () => {
     const navigation = history.state;
     if (navigation?.originInHistory)
       history.go(-((navigation.trail?.length || 0) + 1));
-    else history.pushState({}, "", state.returnPath || "/");
+    else {
+      const project = currentProject();
+      const fallback =
+        state.returnPath && state.returnPath !== "/"
+          ? state.returnPath
+          : project
+            ? projectCanonical(project)
+            : "/projects/";
+      history.replaceState({}, "", fallback);
+      void applyLocationRoute();
+    }
   }
   state.suppressDetailHistory = false;
   state.itemTrail = [];
@@ -2680,7 +3016,7 @@ window.onpopstate = async (event) => {
     state.suppressDetailHistory = true;
     $("detail").close();
   }
-  location.reload();
+  await applyLocationRoute();
 };
 window.addEventListener("beforeunload", (event) => {
   if (!hasUnsavedWorkItem() && !hasUnsavedNewItem()) return;
@@ -2688,10 +3024,6 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 $("newItem").onclick = () => openCreateDialog();
-$("detailBack").onclick = () => {
-  if (state.editingWorkItem && !cancelWorkItemEdit()) return;
-  history.back();
-};
 $("localeSelect").onchange = (event) => {
   window.localStorage.setItem("sprintmark-locale", event.target.value);
   document.documentElement.lang = event.target.value;
@@ -2712,6 +3044,14 @@ $("createForm").onsubmit = async (e) => {
   if (!data.scheduled_for) data.scheduled_for = null;
   if (!data.scheduled_time) data.scheduled_time = null;
   if (!data.priority) data.priority = null;
+  try {
+    data.estimate_minutes = estimateFromControls(
+      $("createEstimate"),
+      $("createEstimateCustom"),
+    );
+  } catch (error) {
+    return alert(error.message);
+  }
   const r = await apiFetch("/api/v1/work-items", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2721,6 +3061,7 @@ $("createForm").onsubmit = async (e) => {
   const item = await r.json();
   state.createDraftId = null;
   state.items.push(item);
+  invalidateProjectInsights();
   state.createEditor?.setMarkdown("");
   e.currentTarget.reset();
   $("createDialog").close();
@@ -2832,15 +3173,47 @@ for (const id of [
   "editTeam",
   "editAssignee",
   "editReviewer",
-  "editFollowers",
   "editTransitionNote",
   "editPriority",
   "editDate",
   "editTime",
+  "editEstimate",
+  "editEstimateCustom",
 ])
   $(id).addEventListener("change", () => {
     if (state.editingWorkItem) state.detailDirty = true;
   });
+$("createEstimate").addEventListener("change", () =>
+  updateEstimateCustom($("createEstimate"), $("createEstimateCustom")),
+);
+$("editEstimate").addEventListener("change", () =>
+  updateEstimateCustom($("editEstimate"), $("editEstimateCustom")),
+);
+$("manageFollowers").addEventListener("click", () => {
+  const panel = $("followerPanel");
+  panel.hidden = !panel.hidden;
+  $("manageFollowers").setAttribute("aria-expanded", String(!panel.hidden));
+  if (!panel.hidden) $("followerSearch").focus();
+});
+$("followerSearch").addEventListener("input", (event) =>
+  renderFollowerOptions(event.target.value),
+);
+$("followerOptions").addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-follower-id]");
+  if (!checkbox) return;
+  if (checkbox.checked) state.editFollowerIds.add(checkbox.dataset.followerId);
+  else state.editFollowerIds.delete(checkbox.dataset.followerId);
+  refreshFollowerControls();
+  $("followerPanel").hidden = false;
+  $("manageFollowers").setAttribute("aria-expanded", "true");
+});
+$("toggleFollowing").addEventListener("click", () => {
+  const userId = state.session?.user?.id;
+  if (!userId) return;
+  if (state.editFollowerIds.has(userId)) state.editFollowerIds.delete(userId);
+  else state.editFollowerIds.add(userId);
+  refreshFollowerControls();
+});
 function enableFileDrop(id, uploader) {
   const zone = $(id);
   zone.addEventListener("dragover", (event) => {

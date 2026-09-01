@@ -49,6 +49,7 @@ export function assertWorkItemEdit({ project, item, user, directory, input }) {
     "scheduled_for",
     "scheduled_time",
     "priority",
+    "estimate_minutes",
     "project_key",
   ];
   if (assignmentFields.some((field) => Object.hasOwn(input, field))) {

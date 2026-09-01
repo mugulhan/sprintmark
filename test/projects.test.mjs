@@ -15,9 +15,14 @@ test("project store starts empty and creates unique project codes", async () => 
     name: "Mobil Uygulama",
     code: "MOBIL",
     description: "Mobil ürün geliştirme projesi",
+    created_at: "2000-01-01T00:00:00.000Z",
   });
   assert.equal(project.key, "PRJ-001");
   assert.equal(project.slug, "mobil-uygulama");
+  assert.equal(project.schema_version, 3);
+  assert.ok(!Number.isNaN(Date.parse(project.created_at)));
+  assert.notEqual(project.created_at, "2000-01-01T00:00:00.000Z");
+  assert.equal(project.archived_at, null);
   assert.equal(project.description, "Mobil ürün geliştirme projesi");
   const updated = await store.patch(
     project.uid,
@@ -26,6 +31,13 @@ test("project store starts empty and creates unique project codes", async () => 
   );
   assert.equal(updated.slug, "mobil-deneyim");
   assert.equal(updated.status, "archived");
+  assert.ok(!Number.isNaN(Date.parse(updated.archived_at)));
+  const reactivated = await store.patch(
+    updated.uid,
+    { status: "active" },
+    updated._etag,
+  );
+  assert.equal(reactivated.archived_at, null);
   await assert.rejects(
     () => store.patch(project.uid, { status: "active" }, project._etag),
     (error) => error.statusCode === 409,

@@ -19,6 +19,7 @@ const allowedPatchFields = new Set([
   "assignee_id",
   "reviewer_id",
   "follower_ids",
+  "estimate_minutes",
   "scheduled_for",
   "scheduled_time",
   "priority",
@@ -35,6 +36,7 @@ const trackedPatchFields = [
   "assignee_id",
   "reviewer_id",
   "follower_ids",
+  "estimate_minutes",
   "scheduled_for",
   "scheduled_time",
   "priority",
@@ -74,6 +76,26 @@ function normalizedActivities(record) {
   }));
 }
 
+function inferredCreatorId(record, fallbackUserId) {
+  const created = (record.activities || []).find(
+    (activity) => activity.type === "created",
+  );
+  const actorId = created?.actor?.id;
+  return /^usr-[0-9a-z-]+$/i.test(actorId || "")
+    ? actorId
+    : record.reporter_id || fallbackUserId;
+}
+
+function inferredStartedAt(record) {
+  if (record.started_at) return record.started_at;
+  const transition = (record.activities || []).find((activity) =>
+    (activity.changes || []).some(
+      (change) => change.field === "status" && change.to === "in_progress",
+    ),
+  );
+  return transition?.created_at || null;
+}
+
 export function normalizeWorkItem(record, fallbackUserId = "usr-local") {
   const mappedStatus = STATUS_MAP[record.status] || record.status;
   const mappedKind =
@@ -84,14 +106,17 @@ export function normalizeWorkItem(record, fallbackUserId = "usr-local") {
         : record.kind;
   return {
     ...record,
-    schema_version: 3,
+    schema_version: 4,
     kind: mappedKind,
     status: mappedStatus,
     team_id: record.team_id || TEAM_MAP[record.team] || null,
     reporter_id: record.reporter_id || fallbackUserId,
+    creator_id: record.creator_id || inferredCreatorId(record, fallbackUserId),
     assignee_id: record.assignee_id || null,
     reviewer_id: record.reviewer_id || null,
     follower_ids: [...new Set(record.follower_ids || [])],
+    estimate_minutes: record.estimate_minutes ?? null,
+    started_at: inferredStartedAt(record),
     activities: normalizedActivities(record),
   };
 }
@@ -152,7 +177,7 @@ export class WorkItemStore {
     const key = input.key || this.nextKey(records, kind, keyPrefix);
     const now = new Date().toISOString();
     const record = {
-      schema_version: 3,
+      schema_version: 4,
       uid: input._uid || newUid(),
       key,
       kind,
@@ -164,15 +189,18 @@ export class WorkItemStore {
         ? input.team_id
         : TEAM_MAP[input.team] || "team-content-technical",
       reporter_id: actor?.id || input.reporter_id || "usr-local",
+      creator_id: actor?.id || input.reporter_id || "usr-local",
       assignee_id: input.assignee_id || null,
       reviewer_id: input.reviewer_id || null,
       follower_ids: [...new Set(input.follower_ids || [])],
+      estimate_minutes: input.estimate_minutes ?? null,
       scheduled_for: input.scheduled_for || null,
       scheduled_time: input.scheduled_time || null,
       priority: input.priority || null,
       page_url: input.page_url || null,
       created_at: now,
       updated_at: now,
+      started_at: input.status === "in_progress" ? now : null,
       completed_at: input.status === "done" ? now : null,
       legacy_ids: [],
       legacy_routes: [],
@@ -288,10 +316,18 @@ export class WorkItemStore {
       ],
       updated_at: now,
     };
+    if (
+      existing.status !== "in_progress" &&
+      next.status === "in_progress" &&
+      !existing.started_at
+    )
+      next.started_at = now;
     if (existing.status !== "done" && next.status === "done")
       next.completed_at = now;
-    if (existing.status === "done" && next.status !== "done")
+    if (existing.status === "done" && next.status !== "done") {
       next.completed_at = null;
+      next.started_at = next.status === "in_progress" ? now : null;
+    }
     next.slug = slugify(next.slug || next.title);
     next.kind =
       existing.kind === "backlog" &&

@@ -6,6 +6,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- Added server-owned project chronology, immutable work-item creators, optional effort estimates and automatic start-to-done cycle timestamps.
+- Added project delivery insights with estimate coverage, remaining effort, median cycle time, status distribution and a filterable, paginated comparison table.
+- Added compact, project-scoped follower controls and identity-rich activity cards without exposing collaborator email addresses.
 - Added `/iş` and `/work` rich-editor commands for stable, searchable work-item references with accessible previews and same-dialog history navigation.
 - Existing bare work-item keys in descriptions and activity notes are now enriched as current, permission-aware reference chips without rewriting stored Markdown.
 - Added full-day, keyboard-accessible calendar creation surfaces with localized date and time context.
@@ -16,6 +19,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Project cards and overview headers now show exact creation dates with localized active duration, while project creation records its timestamp exclusively on the server.
+- New-project creation is available only from the Projects index, and the work-item detail presents creator, estimates and measured duration context.
+- Work-item close, Escape and browser history navigation now restore the underlying in-app view without a full-page reload; the duplicate modal back control was removed.
 - Removed the duplicate project selector from the calendar toolbar in favor of canonical project breadcrumbs.
 - Work-item dialogs now paint an immediate loading state while file references and rich activity views finish progressively.
 - `npm start` automatically loads `.env` and `.env.local` when present.

@@ -118,11 +118,14 @@ test("two invited users complete assignment, review and notification flow", asyn
       title: "Reviewed work",
       project_key: project.key,
       team_id: null,
+      estimate_minutes: 120,
     }),
   });
   assert.equal(createResponse.status, 201);
   const created = await createResponse.json();
   assert.equal(created.reporter_id, member.session.user.id);
+  assert.equal(created.creator_id, member.session.user.id);
+  assert.equal(created.estimate_minutes, 120);
 
   const assignedResponse = await fetch(
     `${base}/api/v1/work-items/${created.uid}`,
@@ -167,6 +170,29 @@ test("two invited users complete assignment, review and notification flow", asyn
   const done = await doneResponse.json();
   assert.equal(done.status, "done");
   assert.equal(done.activities.at(-1).actor.id, owner.session.user.id);
+  assert.ok(done.started_at);
+  assert.ok(done.completed_at);
+
+  const insightsResponse = await fetch(
+    `${base}/api/v1/projects/${project.key}/insights`,
+    { headers: { cookie: member.cookie } },
+  );
+  assert.equal(insightsResponse.status, 200);
+  const insights = await insightsResponse.json();
+  assert.equal(insights.summary.estimated_count, 1);
+  assert.equal(insights.summary.total_estimate_minutes, 120);
+  assert.equal(insights.summary.measured_completed_count, 1);
+
+  const collaboratorsResponse = await fetch(
+    `${base}/api/v1/projects/${project.key}/collaborators`,
+    { headers: { cookie: member.cookie } },
+  );
+  assert.equal(collaboratorsResponse.status, 200);
+  const collaborators = await collaboratorsResponse.json();
+  assert.ok(
+    collaborators.items.some((user) => user.id === member.session.user.id),
+  );
+  assert.ok(collaborators.items.every((user) => !("email" in user)));
 
   const ownerNotifications = await fetch(`${base}/api/v1/notifications`, {
     headers: { cookie: owner.cookie },
